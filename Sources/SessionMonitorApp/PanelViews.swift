@@ -50,12 +50,7 @@ struct HoverReporter: NSViewRepresentable {
 /// Amber marker for sessions outside tmux; the explanation appears in the tip bar on hover.
 struct OutsideTmuxBadge: View {
   var body: some View {
-    Label("非 tmux", systemImage: "lightbulb.fill")
-      .font(.caption2.weight(.semibold))
-      .padding(.horizontal, 6).padding(.vertical, 1)
-      .foregroundStyle(Color.orange)
-      .background(Capsule().fill(Color.orange.opacity(0.16)))
-      .fixedSize()
+    Tag(text: "非 tmux", symbol: "lightbulb.fill", color: Theme.orange)
       .accessibilityLabel("提示：未在 tmux 中运行")
   }
 }
@@ -64,17 +59,17 @@ struct TipBar: View {
   let text: String
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
-      Image(systemName: "lightbulb.fill").foregroundStyle(.orange)
+      Image(systemName: "lightbulb.fill").foregroundStyle(Theme.orange)
       Text(text).font(.caption).fixedSize(horizontal: false, vertical: true)
     }
     .padding(10)
     .frame(maxWidth: .infinity, alignment: .leading)
     // Solid, not a material: the rows underneath must not show through the text.
     .background(
-      RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor))
-        .overlay(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.10)))
-        .shadow(color: .black.opacity(0.15), radius: 6, y: 2))
-    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.orange.opacity(0.45)))
+      RoundedRectangle(cornerRadius: Theme.radiusMedium).fill(Theme.canvasRaised)
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).fill(Theme.orange.opacity(0.10)))
+        .shadow(color: .black.opacity(0.25), radius: 10, y: 4))
+    .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).strokeBorder(Theme.orange.opacity(0.4)))
     .padding(8)
     .allowsHitTesting(false)
   }
@@ -94,11 +89,11 @@ extension Session {
   }
   var stateColor: Color {
     switch state {
-    case .needsPermission: .orange
-    case .needsInput: .yellow
-    case .done where unread: .blue
-    case .working: .green
-    default: .gray
+    case .needsPermission: Theme.orange
+    case .needsInput: Theme.yellow
+    case .done where unread: Theme.blue
+    case .working: Theme.green
+    default: Theme.idle
     }
   }
   var detail: String {
@@ -174,6 +169,7 @@ struct StateDot: View {
       .font(.system(size: size, weight: .semibold))
       .symbolRenderingMode(.palette)
       .foregroundStyle(.white, session.stateColor)
+      .shadow(color: session.state == .ended ? .clear : session.stateColor.opacity(0.55), radius: 5)
       .frame(width: size + 2, height: size + 2)
       .opacity(session.state == .ended ? 0.45 : (animated && pulse ? 0.5 : 1))
       .animation(
@@ -190,12 +186,7 @@ struct AgentBadge: View {
   let kind: AgentKind
   var body: some View {
     let codex = kind == .codex
-    Text(codex ? "Codex" : "Claude")
-      .font(.caption2.weight(.semibold))
-      .padding(.horizontal, 5).padding(.vertical, 1)
-      .foregroundStyle(codex ? Color.teal : Color.brown)
-      .background(Capsule().fill((codex ? Color.teal : Color.brown).opacity(0.15)))
-      .fixedSize()
+    Tag(text: codex ? "Codex" : "Claude", color: codex ? Theme.cyan : Theme.indigo)
   }
 }
 
@@ -207,6 +198,7 @@ struct SessionRow: View {
   let copy: (String) -> Void
   let preferences: PanelPreferences
   @State private var shake = 0.0
+  @State private var hovering = false
   static let height: CGFloat = 58
 
   private var rowHelp: String { session.tips(hooksInstalled: store.claudeHooksInstalled) }
@@ -233,10 +225,10 @@ struct SessionRow: View {
             AgentBadge(kind: session.kind)
             if session.outsideTmux { OutsideTmuxBadge() }
             Spacer(minLength: 6)
-            Text(duration).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            Text(duration).font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary)
           }
           Text("\(session.projectName) · \(session.detail)").font(.caption).foregroundStyle(
-            .secondary
+            Theme.textSecondary
           ).lineLimit(1)
         }
       }
@@ -244,9 +236,16 @@ struct SessionRow: View {
       .frame(height: SessionRow.height)
       .background(
         HoverReporter { hovering in
+          self.hovering = hovering
           preferences.hover(session.id, tip: hovering && !rowHelp.isEmpty ? rowHelp : nil)
         })
       .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        RoundedRectangle(cornerRadius: Theme.radiusMedium, style: .continuous)
+          .fill(hovering ? Theme.fill : .clear)
+          .padding(.horizontal, 6)
+      )
+      .animation(Theme.motion, value: hovering)
       .contentShape(Rectangle())
     }
     .buttonStyle(.plain)
@@ -288,15 +287,15 @@ extension SessionStore {
     return [
       (
         "需要介入", sessions.filter { [.needsPermission, .needsInput].contains($0.state) }.count,
-        .orange
+        Theme.orange
       ),
-      ("完成未读", sessions.filter { $0.state == .done && $0.unread }.count, .blue),
-      ("工作中", sessions.filter { $0.state == .working }.count, .green),
+      ("完成未读", sessions.filter { $0.state == .done && $0.unread }.count, Theme.blue),
+      ("工作中", sessions.filter { $0.state == .working }.count, Theme.green),
       (
         "空闲",
         sessions.filter {
           $0.state == .idle || $0.state == .unknown || ($0.state == .done && !$0.unread)
-        }.count, .gray
+        }.count, Theme.idle
       ),
     ]
   }
@@ -328,28 +327,31 @@ struct PanelContent: View {
         HStack {
           Text("Sessions").font(.headline)
           Spacer()
-          Button("全部已读") { store.markAllRead() }.font(.caption)
+          Button("全部已读") { store.markAllRead() }.buttonStyle(.glassPillCompact)
           Button {
             preferences.expanded = false
           } label: {
             Image(systemName: "chevron.up").accessibilityLabel("收起")
-          }
-        }.buttonStyle(.plain).padding(14)
+          }.buttonStyle(GlassCircleButtonStyle(size: 22))
+        }.padding(.horizontal, 14).padding(.vertical, 12)
         if fileOnlyCount > 0 {
           Button(action: openSettings) {
             Label("Claude hook 未安装：\(fileOnlyCount) 个会话仅显示忙/闲 · 点此安装", systemImage: "info.circle")
-              .font(.caption2).foregroundStyle(.orange).lineLimit(1)
+              .font(.caption2.weight(.medium)).foregroundStyle(Theme.orange).lineLimit(1)
+              .padding(.horizontal, 8).padding(.vertical, 3)
+              .background(Capsule().fill(Theme.orange.opacity(0.12)))
+              .overlay(Capsule().strokeBorder(Theme.orange.opacity(0.3), lineWidth: 0.75))
           }
           .buttonStyle(.plain)
           .padding(.horizontal, 14).padding(.bottom, 8)
         }
-        Divider().padding(.horizontal, 12)
+        Rectangle().fill(Theme.separator).frame(height: 1).padding(.horizontal, 12)
         if store.sessions.isEmpty {
           VStack(spacing: 8) {
-            Image(systemName: "rectangle.stack").font(.title2).foregroundStyle(.secondary)
+            Image(systemName: "rectangle.stack").font(.title2).foregroundStyle(Theme.textSecondary)
             Text("暂无会话").font(.body)
             Text("安装 hook 后，新的会话事件会显示在这里。")
-              .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+              .font(.caption).foregroundStyle(Theme.textSecondary).multilineTextAlignment(.center)
           }.frame(maxWidth: .infinity).padding(24)
         } else {
           TimelineView(.periodic(from: .now, by: 30)) { timeline in
@@ -361,44 +363,41 @@ struct PanelContent: View {
                     preferences: preferences)
                 }
               }
-            }.frame(maxHeight: 8 * SessionRow.height)
+            }.frame(maxHeight: 8 * SessionRow.height).padding(.vertical, 4)
           }
         }
         if let error = store.lastError {
-          Divider()
+          Rectangle().fill(Theme.separator).frame(height: 1)
           VStack(alignment: .leading, spacing: 6) {
             Label("发生错误", systemImage: "exclamationmark.triangle.fill").font(.caption.bold())
-              .foregroundStyle(.red)
+              .foregroundStyle(Theme.pink)
             Text(error).font(.caption2).lineLimit(3).textSelection(.disabled)
             HStack {
               Button("查看日志", action: showLog)
               Spacer()
               Button("关闭提示") { store.clearError() }
-            }.font(.caption2).buttonStyle(.plain)
+            }.buttonStyle(.glassPillCompact)
           }.padding(12)
         }
       } else {
         // Not a button: dragging the capsule only moves the panel. Only the chevron expands it.
         HStack(spacing: 12) {
           if store.lastError != nil {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Theme.pink)
           }
           ForEach(counts.indices, id: \.self) { index in
             if counts[index].1 > 0 {
               HStack(spacing: 5) {
-                Circle().fill(counts[index].2).frame(width: 11, height: 11)
+                GlowDot(color: counts[index].2, size: 10)
                 Text("\(counts[index].1)").font(.body.weight(.semibold)).monospacedDigit()
                   .lineLimit(1).fixedSize()
               }.accessibilityLabel("\(counts[index].0) \(counts[index].1)")
             }
           }
-          if counts.allSatisfy({ $0.1 == 0 }) { Text("—").foregroundStyle(.secondary) }
+          if counts.allSatisfy({ $0.1 == 0 }) { Text("—").foregroundStyle(Theme.textSecondary) }
           Button(action: expand) {
-            Image(systemName: "chevron.down").font(.caption.weight(.semibold))
-              .frame(width: 26, height: 26)
-              .background(Circle().fill(.primary.opacity(0.08)))
-              .contentShape(Circle())
-          }.buttonStyle(.plain).help("展开").accessibilityLabel("展开会话列表")
+            Image(systemName: "chevron.down")
+          }.buttonStyle(GlassCircleButtonStyle()).help("展开").accessibilityLabel("展开会话列表")
         }.padding(.leading, 16).padding(.trailing, 6).frame(height: 36)
           .fixedSize()  // the capsule is exactly as wide as its content (PanelController measures it)
       }
@@ -410,12 +409,9 @@ struct PanelContent: View {
     }
     .animation(.easeOut(duration: 0.12), value: preferences.hoverTip?.text)
     .frame(width: preferences.expanded ? 360 : nil)
-    .background(reduceTransparency ? AnyShapeStyle(.background) : AnyShapeStyle(.ultraThinMaterial))
-    .clipShape(.rect(cornerRadius: preferences.expanded ? 12 : 18))
-    .overlay(
-      RoundedRectangle(cornerRadius: preferences.expanded ? 12 : 18).strokeBorder(
-        .primary.opacity(0.12))
-    )
+    .glassSurface(
+      cornerRadius: preferences.expanded ? Theme.radiusLarge : 18,
+      reduceTransparency: reduceTransparency)
     .onChange(of: preferences.expanded) { resize() }
     .onChange(of: store.sessions.count) { resize() }
     .onChange(of: store.lastError) { resize() }

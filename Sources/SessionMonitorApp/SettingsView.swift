@@ -66,15 +66,52 @@ private func labeled(_ title: String, _ detail: String) -> some View {
   }
 }
 
+/// One settings row: optional status icon, title + explanation, and the control on the right,
+/// vertically centered on the two-line label (Form's own rows align controls to the first line).
+private struct SettingsRow<Control: View>: View {
+  let title: String
+  let detail: String
+  var icon: (symbol: String, color: Color)?
+  @ViewBuilder let control: Control
+
+  var body: some View {
+    HStack(alignment: .center, spacing: 10) {
+      if let icon {
+        Image(systemName: icon.symbol).font(.system(size: 15)).foregroundStyle(icon.color)
+          .frame(width: 18)
+      }
+      labeled(title, detail)
+      Spacer(minLength: 12)
+      control.fixedSize()
+    }
+  }
+}
+
 private extension View {
   func settingsPage() -> some View {
-    formStyle(.grouped).frame(width: settingsWidth).fixedSize(horizontal: false, vertical: true)
+    formStyle(.grouped).tint(Theme.blue)
+      .frame(width: settingsWidth).fixedSize(horizontal: false, vertical: true)
   }
   /// Re-read external state when the window comes back (e.g. after System Settings or Codex /hooks).
   func onWindowFocus(_ action: @escaping () -> Void) -> some View {
     onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
       action()
     }
+  }
+}
+
+/// Shortcut shown as a glass keycap, same height as the pill buttons.
+private struct KeyCap: View {
+  let text: String
+  var body: some View {
+    ZStack {
+      Capsule().fill(Theme.fill)
+      Capsule().strokeBorder(Theme.border, lineWidth: 1)
+      Text(text).font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+        .fixedSize()
+    }
+    .frame(width: 56, height: PillButtonStyle.height)
+    .clipShape(Capsule())
   }
 }
 
@@ -115,7 +152,7 @@ struct IntegrationSettings: View {
           "不安装时最大的问题：会话停下来等你批准权限或回答问题时，面板不会变色，也不会通知，看起来还在工作或空闲。",
           systemImage: "exclamationmark.triangle.fill"
         )
-        .font(.caption).foregroundStyle(.orange)
+        .font(.caption).foregroundStyle(Theme.orange)
         .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
       }
@@ -154,8 +191,8 @@ struct IntegrationSettings: View {
       ForEach(rows, id: \.0) { row in
         GridRow {
           Text(row.0).font(.callout)
-          Text(row.1).font(.callout).foregroundStyle(.green)
-          Text(row.2).font(.callout).foregroundStyle(row.2.hasPrefix("✗") ? .orange : .secondary)
+          Text(row.1).font(.callout).foregroundStyle(Theme.green)
+          Text(row.2).font(.callout).foregroundStyle(row.2.hasPrefix("✗") ? Theme.orange : .secondary)
         }
       }
     }
@@ -169,10 +206,10 @@ struct IntegrationSettings: View {
       atPath: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(folder).path)
     let (symbol, color, detail): (String, Color, String) = {
       switch status {
-      case .installed: return ("checkmark.circle.fill", .green, "已安装，会话状态实时更新")
+      case .installed: return ("checkmark.circle.fill", Theme.green, "已安装，会话状态实时更新")
       case .awaitingTrust(let count):
         return (
-          "exclamationmark.circle.fill", .orange,
+          "exclamationmark.circle.fill", Theme.orange,
           "已安装，还有 \(count) 项需要在 Codex 中批准：在任意 Codex 会话输入 /hooks 批准；已打开的 Codex 会话需重启"
         )
       case .notInstalled:
@@ -180,23 +217,18 @@ struct IntegrationSettings: View {
           "circle.dashed", .secondary,
           toolPresent ? "未安装：只能显示忙/闲，无法提示授权和等待输入" : "未检测到 \(name)（~/\(folder) 不存在）"
         )
-      case .unreadable(let message): return ("xmark.octagon.fill", .red, "配置文件无法读取：\(message)")
+      case .unreadable(let message): return ("xmark.octagon.fill", Theme.pink, "配置文件无法读取：\(message)")
       }
     }()
-    LabeledContent {
+    SettingsRow(title: name, detail: detail, icon: (symbol, color)) {
       if busyAgent == agent {
-        ProgressView().controlSize(.small)
+        ProgressView().controlSize(.small).frame(width: 56)
       } else if status == .notInstalled {
-        Button("安装") { run(agent, install: true) }.disabled(!toolPresent)
+        Button("安装") { run(agent, install: true) }.buttonStyle(.primaryPill()).disabled(!toolPresent)
       } else if case .unreadable = status {
         EmptyView()
       } else {
-        Button("卸载") { confirmUninstall = agent }
-      }
-    } label: {
-      HStack(spacing: 8) {
-        Image(systemName: symbol).foregroundStyle(color)
-        labeled(name, detail)
+        Button("卸载") { confirmUninstall = agent }.buttonStyle(.destructivePill)
       }
     }
   }
@@ -238,9 +270,15 @@ struct NotificationSettings: View {
         Text("系统权限")
       }
       Section {
-        Toggle(isOn: $notifyPermission) { labeled("需要授权", "Claude / Codex 请求权限时提醒，有声音") }
-        Toggle(isOn: $notifyInput) { labeled("等待输入", "需要你回答问题或确认计划时提醒，有声音") }
-        Toggle(isOn: $notifyDone) { labeled("已完成", "一轮任务结束时提醒，附最后一句回复，无声音") }
+        SettingsRow(title: "需要授权", detail: "Claude / Codex 请求权限时提醒，有声音") {
+          Toggle("需要授权", isOn: $notifyPermission).labelsHidden()
+        }
+        SettingsRow(title: "等待输入", detail: "需要你回答问题或确认计划时提醒，有声音") {
+          Toggle("等待输入", isOn: $notifyInput).labelsHidden()
+        }
+        SettingsRow(title: "已完成", detail: "一轮任务结束时提醒，附最后一句回复，无声音") {
+          Toggle("已完成", isOn: $notifyDone).labelsHidden()
+        }
       } header: {
         Text("提醒哪些状态")
       } footer: {
@@ -257,24 +295,21 @@ struct NotificationSettings: View {
 
   @ViewBuilder private var statusRow: some View {
     let allowed = authorization == .authorized || authorization == .provisional
-    LabeledContent {
+    SettingsRow(
+      title: allowed ? "系统通知已允许" : (authorization == nil ? "正在检查系统通知权限…" : "系统通知未允许"),
+      detail: allowed ? "通知样式和声音可在系统设置中调整" : "未允许时下面的开关不会生效",
+      icon: allowed
+        ? ("checkmark.circle.fill", Theme.green) : ("exclamationmark.triangle.fill", Theme.orange)
+    ) {
       if authorization == .notDetermined {
         Button("请求权限") {
           Task {
             await actions.requestNotifications()
             await refreshAuthorization()
           }
-        }
+        }.buttonStyle(.primaryPill())
       } else {
-        Button("打开系统设置…", action: openSystemNotificationSettings)
-      }
-    } label: {
-      HStack(spacing: 8) {
-        Image(systemName: allowed ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-          .foregroundStyle(allowed ? Color.green : Color.orange)
-        labeled(
-          allowed ? "系统通知已允许" : (authorization == nil ? "正在检查系统通知权限…" : "系统通知未允许"),
-          allowed ? "通知样式和声音可在系统设置中调整" : "未允许时下面的开关不会生效")
+        Button("打开系统设置…", action: openSystemNotificationSettings).buttonStyle(.glassPill)
       }
     }
   }
@@ -302,32 +337,33 @@ struct GeneralSettings: View {
   var body: some View {
     Form {
       Section {
-        Picker(selection: $detachedAction) {
-          Text("每次询问").tag("")
-          Text("切换最近活动的 tmux 窗口").tag(DetachedTmuxAction.switchRecent.rawValue)
-          Text("新开标签页").tag(DetachedTmuxAction.newTab.rawValue)
-        } label: {
-          labeled("会话未在任何窗口打开时", "点击的 tmux session 没有标签页在显示它")
+        SettingsRow(title: "会话未在任何窗口打开时", detail: "点击的 tmux session 没有标签页在显示它") {
+          Picker("会话未在任何窗口打开时", selection: $detachedAction) {
+            Text("每次询问").tag("")
+            Text("切换最近活动的 tmux 窗口").tag(DetachedTmuxAction.switchRecent.rawValue)
+            Text("新开标签页").tag(DetachedTmuxAction.newTab.rawValue)
+          }.labelsHidden()
         }
       } header: {
         Text("跳转")
       }
       Section {
-        Toggle(isOn: $launchAtLogin) { labeled("登录时启动", "开机后自动在后台运行") }
-          .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
-        LabeledContent {
-          Text("⌥⌘S").font(.body.monospaced()).foregroundStyle(.secondary)
-        } label: {
-          labeled("显示 / 隐藏悬浮窗", "全局快捷键")
+        SettingsRow(title: "登录时启动", detail: "开机后自动在后台运行") {
+          Toggle("登录时启动", isOn: $launchAtLogin).labelsHidden()
+            .onChange(of: launchAtLogin) { _, enabled in setLaunchAtLogin(enabled) }
+        }
+        SettingsRow(title: "显示 / 隐藏悬浮窗", detail: "全局快捷键") {
+          KeyCap(text: "⌥⌘S")
         }
       } header: {
         Text("启动与快捷键")
       }
       Section {
-        HStack {
-          Button("查看日志", action: actions.showLog)
-          Button("打开数据目录", action: actions.openDataDirectory)
-          Spacer()
+        SettingsRow(title: "日志与数据目录", detail: "排查问题时查看") {
+          HStack(spacing: 8) {
+            Button("查看日志", action: actions.showLog)
+            Button("打开数据目录", action: actions.openDataDirectory)
+          }.buttonStyle(.glassPill)
         }
       } header: {
         Text("数据")

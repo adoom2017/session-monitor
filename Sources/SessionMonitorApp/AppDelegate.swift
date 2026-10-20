@@ -46,6 +46,9 @@ import SwiftUI
     syncInstalledHook()
     showSettingsOnFirstLaunch()
     if let directory = ProcessInfo.processInfo.environment["SM_SNAPSHOT_DIR"] {
+      if let appearance = ProcessInfo.processInfo.environment["SM_SNAPSHOT_APPEARANCE"] {
+        NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+      }
       Task { @MainActor [weak self] in
         try? await Task.sleep(for: .seconds(4))  // first reconcile has populated sessions
         self?.panel.writeSnapshots(to: URL(fileURLWithPath: directory))
