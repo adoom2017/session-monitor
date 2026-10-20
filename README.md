@@ -79,3 +79,19 @@ scripts/package-release.sh \
 - `SessionMonitor-1.0.0.dmg`
 
 脚本默认选择钥匙串中唯一的 Developer ID Application 证书；有多个证书时，用 `--identity "签名身份名称"` 指定。`--build` 设置构建号，`--no-dmg` 仅生成 ZIP。省略 `--notary-profile` 时只签名，不提交公证。
+
+### 发布到 GitHub
+
+打包并公证后发布：
+
+```bash
+scripts/publish-release.sh 1.1.3
+```
+
+或者一步完成打包、公证和发布：
+
+```bash
+scripts/publish-release.sh 1.1.4 --build sessionmonitor-notary
+```
+
+脚本发布前会检查：工作区干净且已推送；`dist/` 里有对应版本的 DMG 和 zip；zip 里的 App 版本号正确；DMG 和 App 都已公证并能通过 Gatekeeper。任何一项不满足都会停止。检查通过后，给 HEAD 打 `v<版本>` 标签并推送，再创建 Release，上传 DMG 和 zip，附安装说明和 SHA-256。`--notes 文件` 用自定义说明，`--draft` 创建草稿。
