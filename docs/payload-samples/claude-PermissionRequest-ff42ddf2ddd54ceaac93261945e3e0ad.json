@@ -1,0 +1,30 @@
+{
+  "session_id": "redacted-e6a1e72a5731430e",
+  "transcript_path": "/REDACTED/session.jsonl",
+  "cwd": "/REDACTED/project",
+  "scratchpad_dir": "<redacted>",
+  "prompt_id": "<redacted>",
+  "permission_mode": "default",
+  "effort": {
+    "redacted-key-0081779c287d567d": "<redacted>"
+  },
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "<redacted>",
+    "description": "<redacted>"
+  },
+  "permission_suggestions": [
+    {
+      "type": "<redacted>",
+      "rules": [
+        {
+          "toolName": "<redacted>",
+          "ruleContent": "<redacted>"
+        }
+      ],
+      "behavior": "<redacted>",
+      "destination": "<redacted>"
+    }
+  ]
+}

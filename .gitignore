@@ -1,0 +1,9 @@
+.build/
+.swiftpm/
+build/
+.DS_Store
+dist/
+.vscode/
+# docs: only the redacted hook samples used by tests are committed
+docs/*
+!docs/payload-samples/

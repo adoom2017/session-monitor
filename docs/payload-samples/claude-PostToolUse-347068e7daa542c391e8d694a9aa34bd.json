@@ -1,0 +1,26 @@
+{
+  "session_id": "redacted-c37cf6dd39028e02",
+  "transcript_path": "/REDACTED/session.jsonl",
+  "cwd": "/REDACTED/project",
+  "scratchpad_dir": "<redacted>",
+  "prompt_id": "<redacted>",
+  "permission_mode": "default",
+  "effort": {
+    "redacted-key-0081779c287d567d": "<redacted>"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "<redacted>",
+    "description": "<redacted>"
+  },
+  "tool_response": {
+    "stdout": "<redacted>",
+    "stderr": "<redacted>",
+    "interrupted": false,
+    "isImage": false,
+    "noOutputExpected": false
+  },
+  "tool_use_id": "redacted-5872dc070bc22624",
+  "duration_ms": 88
+}

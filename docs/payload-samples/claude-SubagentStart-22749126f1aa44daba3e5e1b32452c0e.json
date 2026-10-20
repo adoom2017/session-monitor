@@ -1,0 +1,10 @@
+{
+  "session_id": "redacted-c37cf6dd39028e02",
+  "transcript_path": "/REDACTED/session.jsonl",
+  "cwd": "/REDACTED/project",
+  "scratchpad_dir": "<redacted>",
+  "prompt_id": "<redacted>",
+  "agent_id": "redacted-48ec41ae28037bf5",
+  "agent_type": "<redacted>",
+  "hook_event_name": "SubagentStart"
+}

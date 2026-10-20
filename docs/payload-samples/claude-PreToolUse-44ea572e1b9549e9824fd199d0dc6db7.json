@@ -1,0 +1,19 @@
+{
+  "session_id": "redacted-c37cf6dd39028e02",
+  "transcript_path": "/REDACTED/session.jsonl",
+  "cwd": "/REDACTED/project",
+  "scratchpad_dir": "<redacted>",
+  "prompt_id": "<redacted>",
+  "permission_mode": "default",
+  "effort": {
+    "redacted-key-0081779c287d567d": "<redacted>"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Agent",
+  "tool_input": {
+    "description": "<redacted>",
+    "prompt": "<redacted>",
+    "redacted-key-83942430887f19a6": "<redacted>"
+  },
+  "tool_use_id": "redacted-a2f8215d4b93acf3"
+}

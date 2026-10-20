@@ -1,0 +1,10 @@
+{
+  "session_id": "redacted-c37cf6dd39028e02",
+  "transcript_path": "/REDACTED/session.jsonl",
+  "cwd": "/REDACTED/project",
+  "scratchpad_dir": "<redacted>",
+  "prompt_id": "<redacted>",
+  "hook_event_name": "Notification",
+  "message": "<redacted>",
+  "notification_type": "idle_prompt"
+}

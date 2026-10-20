@@ -1,0 +1,9 @@
+{
+  "session_id": "redacted-4749e27ce5466f6e",
+  "transcript_path": "/REDACTED/session.jsonl",
+  "cwd": "/REDACTED/project",
+  "scratchpad_dir": "<redacted>",
+  "prompt_id": "<redacted>",
+  "hook_event_name": "SessionEnd",
+  "reason": "prompt_input_exit"
+}

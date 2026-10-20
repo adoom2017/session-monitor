@@ -1,0 +1,10 @@
+{"timestamp": "2026-10-19T09:53:12.978Z", "type": "event_msg", "payload": {"type": "task_started"}}
+{"timestamp": "2026-10-19T09:53:16.497Z", "type": "event_msg", "payload": {"type": "task_complete"}}
+{"timestamp": "2026-10-19T09:54:21.802Z", "type": "event_msg", "payload": {"type": "task_started"}}
+{"timestamp": "2026-10-19T09:54:27.640Z", "type": "event_msg", "payload": {"type": "task_complete"}}
+{"timestamp": "2026-10-19T09:55:01.383Z", "type": "event_msg", "payload": {"type": "task_started"}}
+{"timestamp": "2026-10-19T09:55:05.563Z", "type": "event_msg", "payload": {"type": "task_complete"}}
+{"timestamp": "2026-10-19T09:55:48.381Z", "type": "event_msg", "payload": {"type": "task_started"}}
+{"timestamp": "2026-10-19T09:55:54.976Z", "type": "event_msg", "payload": {"type": "task_complete"}}
+{"timestamp": "2026-10-19T09:56:36.184Z", "type": "event_msg", "payload": {"type": "task_started"}}
+{"timestamp": "2026-10-19T09:56:47.210Z", "type": "event_msg", "payload": {"type": "turn_aborted", "reason": "interrupted"}}

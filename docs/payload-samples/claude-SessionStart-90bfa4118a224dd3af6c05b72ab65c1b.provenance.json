@@ -1,0 +1,55 @@
+{
+  "origin": "real-hook-capture",
+  "event": "SessionStart",
+  "run": {
+    "label": "resume-interrupt",
+    "claudeVersion": "2.1.303 (Claude Code)"
+  },
+  "receivedAt": "2026-10-19T06:04:13.214147+00:00",
+  "rawSHA256": "5878b57f020964f3944fada33eaa0f8220cc08e08bbc49611ee89390cd98e537",
+  "sampleSHA256": "d1acac59a353bc5c9fbc07fcb309c590875702b8e4d87a56f63f26136e5b4ae7",
+  "parentChain": [
+    {
+      "depth": 1,
+      "pid": 30198,
+      "ppid": 30192,
+      "comm": "claude",
+      "sessionFileExists": true
+    },
+    {
+      "depth": 2,
+      "pid": 30192,
+      "ppid": 30191,
+      "comm": "Python",
+      "sessionFileExists": false
+    },
+    {
+      "depth": 3,
+      "pid": 30191,
+      "ppid": 30190,
+      "comm": "script",
+      "sessionFileExists": false
+    },
+    {
+      "depth": 4,
+      "pid": 30190,
+      "ppid": 20550,
+      "comm": "rtk",
+      "sessionFileExists": false
+    },
+    {
+      "depth": 5,
+      "pid": 20550,
+      "ppid": 2792,
+      "comm": "codex",
+      "sessionFileExists": false
+    },
+    {
+      "depth": 6,
+      "pid": 2792,
+      "ppid": 1,
+      "comm": "codex",
+      "sessionFileExists": false
+    }
+  ]
+}
