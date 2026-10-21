@@ -253,6 +253,59 @@ import Testing
     #expect(try Jumper.target(for: later) != .app(termProgram: CodexSource.desktopProgram))
   }
 
+  /// Real case (linker-face-recognition, 2026-10-21): a fresh TUI was found before its first
+  /// prompt (no rollout yet, pending id). Its daemon-run hooks carry no pid and built a second,
+  /// "desktop" row without the outside-tmux badge.
+  @MainActor @Test func pidlessHooksOfFreshTUIAttachToItsRow() throws {
+    let store = SessionStore()
+    let base = Date()
+    let process = CodexProcess(pid: getpid(), tty: "/dev/ttys013", cwd: "/work/linker", startTime: nil)
+    store.upsertScannedCodex(process, sessionID: nil, rolloutPath: nil, tmuxPane: nil, running: nil, now: base)
+    #expect(store.sessions.first?.currentSessionId.hasPrefix(SessionStore.pendingSessionPrefix) == true)
+    let row = try store.apply(
+      AgentEvent(
+        kind: .codex, sessionId: "01a15c5f", agentPid: nil, cwd: "/work/linker",
+        at: base.addingTimeInterval(1), type: .promptSubmitted,
+        terminal: TerminalInfo(termProgram: CodexSource.desktopProgram)))
+    #expect(store.sessions.count == 1 && row.id == "codex:\(getpid())")
+    #expect(row.currentSessionId == "01a15c5f" && row.state == .working)
+    #expect(row.terminal.termProgram == nil && row.terminal.tmuxPane == nil && row.terminal.tty == "/dev/ttys013")
+  }
+
+  @MainActor @Test func pendingTUIMatchIsSkippedWhenAmbiguous() throws {
+    let store = SessionStore()
+    for (pid, tty) in [(Int32(101), "/dev/ttys1"), (Int32(102), "/dev/ttys2")] {
+      store.upsertScannedCodex(
+        CodexProcess(pid: pid, tty: tty, cwd: "/work/same", startTime: nil),
+        sessionID: nil, rolloutPath: nil, tmuxPane: nil, running: nil, now: Date())
+    }
+    let row = try store.apply(
+      AgentEvent(
+        kind: .codex, sessionId: "t1", agentPid: nil, cwd: "/work/same",
+        at: Date().addingTimeInterval(1), type: .promptSubmitted))
+    #expect(store.sessions.count == 3 && row.id == "codex:sid:t1")
+  }
+
+  /// When the hooks came first, the rollout found on a later scan names the thread and the two
+  /// rows merge.
+  @MainActor @Test func laterRolloutAdoptsThreadAndMerges() throws {
+    let store = SessionStore()
+    let base = Date()
+    let process = CodexProcess(pid: getpid(), tty: "/dev/ttys013", cwd: "/work/linker", startTime: nil)
+    try store.apply(
+      AgentEvent(
+        kind: .codex, sessionId: "01a15c5f", agentPid: nil, cwd: "/work/linker", at: base,
+        type: .promptSubmitted, terminal: TerminalInfo(termProgram: CodexSource.desktopProgram)))
+    store.upsertScannedCodex(process, sessionID: nil, rolloutPath: nil, tmuxPane: nil, running: nil, now: base)
+    store.mergeSessionIDDuplicates()
+    #expect(store.sessions.count == 2)
+    store.upsertScannedCodex(
+      process, sessionID: "01a15c5f", rolloutPath: "/r.jsonl", tmuxPane: nil, running: nil, now: base)
+    store.mergeSessionIDDuplicates()
+    let row = try #require(store.sessions.first)
+    #expect(store.sessions.count == 1 && row.id == "codex:\(getpid())" && row.terminal.termProgram == nil)
+  }
+
   @MainActor @Test func staleEndedSessionIDRowIsDroppedNotMerged() throws {
     let store = SessionStore()
     try store.apply(

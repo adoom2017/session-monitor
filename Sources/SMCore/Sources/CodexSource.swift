@@ -67,10 +67,16 @@ public struct CodexSource: AgentSource {
   public func reconcile(store: SessionStore) async throws {
     // Like Claude's session files: every running Codex TUI gets a row, keyed by pid, so it stays
     // visible while the process lives even before (or without) any hook event.
-    let known = Set(await store.sessions.filter { $0.kind == .codex }.compactMap(\.pid))
+    let codexRows = await store.sessions.filter { $0.kind == .codex }
+    let known = Set(codexRows.compactMap(\.pid))
+    let pending = Set(
+      codexRows.filter { $0.currentSessionId.hasPrefix(SessionStore.pendingSessionPrefix) }
+        .compactMap(\.pid))
     for process in try discover() {
       let isNew = !known.contains(process.pid)
-      let rollout = isNew ? CodexRolloutIndex.find(for: process) : nil
+      // A fresh TUI has no rollout until its first prompt: keep looking until it appears.
+      let rollout =
+        isNew || pending.contains(process.pid) ? CodexRolloutIndex.find(for: process) : nil
       let pane = isNew ? try await Jumper.tmuxPane(forTTY: process.tty) : nil
       await store.upsertScannedCodex(
         process, sessionID: rollout?.sessionID, rolloutPath: rollout?.path, tmuxPane: pane,

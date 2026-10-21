@@ -25,7 +25,9 @@ private final class PassiveHostingView<Content: View>: NSHostingView<Content> {
     super.init()
     panel.level = .floating
     panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-    panel.isMovableByWindowBackground = true
+    // Not movable by background: AppKit would move the window on the slightest jitter of a click,
+    // which then read as a drag and swallowed the click. Dragging is started by hand (pressMonitor).
+    panel.isMovableByWindowBackground = false
     panel.hidesOnDeactivate = false
     panel.isOpaque = false
     panel.backgroundColor = .clear
@@ -36,7 +38,8 @@ private final class PassiveHostingView<Content: View>: NSHostingView<Content> {
     panel.contentView = PassiveHostingView(
       rootView: PanelContent(
         store: store, preferences: preferences, resize: { [weak self] in self?.resize() },
-        jump: jump, copy: copy, showLog: showLog, openSettings: openSettings,
+        jump: { [weak self] session in if self?.dragged == false { jump(session) } },
+        copy: copy, showLog: showLog, openSettings: openSettings,
         expand: { [weak self] in self?.expandUnlessDragged() }))
     resize()
     if let origin = UserDefaults.standard.string(forKey: "panelOrigin") {
@@ -58,30 +61,64 @@ private final class PassiveHostingView<Content: View>: NSHostingView<Content> {
     ) { [weak self] _ in
       MainActor.assumeIsolated { self?.collapseIfExpanded() }
     }
-    // Where the panel was when the current press began; a release elsewhere means a drag.
-    pressMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-      MainActor.assumeIsolated {
-        if let self, event.window === self.panel { self.pressOrigin = self.panel.frame.origin }
-      }
-      return event
+    pressMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]) {
+      [weak self] event in
+      let consumed = MainActor.assumeIsolated { self?.handlePress(event) ?? false }
+      return consumed ? nil : event
     }
   }
 
   private var outsideClickMonitor: Any?
   private var pressMonitor: Any?
-  private var pressOrigin: NSPoint?
+  /// The mouse-down of the current press on the panel (nil when it began on a scroller).
+  private var pressEvent: NSEvent?
+  /// The current press turned into a window drag; its mouse-up must not click what it lands on.
+  private var dragged = false
+  /// Pointer travel that turns a press into a drag; below it the press stays a click.
+  private static let dragThreshold: CGFloat = 4
+
+  /// Whether a point (window coordinates) is on the collapsed capsule's chevron, with 3pt slack.
+  private func chevronHit(_ point: NSPoint) -> Bool {
+    let right = panel.frame.width - PanelContent.chevronTrailing
+    return point.x >= right - PanelContent.chevronSize - 3 && point.x <= right + 3
+  }
+
+  /// Returns true when the event started a window drag (and is consumed).
+  private func handlePress(_ event: NSEvent) -> Bool {
+    guard event.window === panel else { return false }
+    if event.type == .leftMouseDown {
+      dragged = false
+      let hit = panel.contentView?.hitTest(
+        panel.contentView?.convert(event.locationInWindow, from: nil) ?? .zero)
+      pressEvent = hit is NSScroller ? nil : event
+      return false
+    }
+    if event.type == .leftMouseUp {
+      // SwiftUI buttons in this never-key panel can miss a click while the app is inactive (the
+      // press arrives, the action never fires), so the chevron's click is recognized here.
+      if !dragged, !preferences.expanded, let down = pressEvent,
+        chevronHit(down.locationInWindow), chevronHit(event.locationInWindow)
+      {
+        preferences.expanded = true
+      }
+      return false
+    }
+    guard !dragged, let down = pressEvent else { return false }
+    let start = down.locationInWindow, now = event.locationInWindow
+    guard hypot(now.x - start.x, now.y - start.y) > Self.dragThreshold else { return false }
+    dragged = true
+    panel.performDrag(with: down)
+    return true
+  }
 
   private func collapseIfExpanded() {
     if preferences.expanded { preferences.expanded = false }
   }
 
   /// A drag moves the window under the cursor, so the mouse-up that ends it lands on the chevron
-  /// and would count as a click. If the panel moved since the press began, it was a drag.
+  /// and would count as a click.
   func expandUnlessDragged() {
-    if let start = pressOrigin, hypot(panel.frame.minX - start.x, panel.frame.minY - start.y) > 2 {
-      return
-    }
-    preferences.expanded = true
+    if !dragged { preferences.expanded = true }
   }
   func show() { panel.orderFrontRegardless() }
   func toggle() { if panel.isVisible { panel.orderOut(nil) } else { show() } }
@@ -112,6 +149,13 @@ private final class PassiveHostingView<Content: View>: NSHostingView<Content> {
   /// Debug aid: renders the panel itself (no screen-recording permission needed) to
   /// `<directory>/panel-collapsed.png` and `panel-expanded.png`. Enabled by SM_SNAPSHOT_DIR.
   func writeSnapshots(to directory: URL) {
+    // The rows behind the pictures, for checking badges and terminal facts.
+    let rows = store.sessions.map { s in
+      "\(s.id)\tpid=\(s.pid.map(String.init) ?? "-")\tsid=\(s.currentSessionId)\t\(s.state)\t\(s.source)"
+        + "\tcwd=\(s.cwd ?? "-")\toutsideTmux=\(s.outsideTmux)\t\(s.terminal)"
+    }
+    try? (rows.joined(separator: "\n") + "\n").write(
+      to: directory.appendingPathComponent("sessions.txt"), atomically: true, encoding: .utf8)
     let wasExpanded = preferences.expanded
     for expanded in [false, true] {
       preferences.expanded = expanded

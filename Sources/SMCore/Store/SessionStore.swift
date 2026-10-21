@@ -26,12 +26,12 @@ import Observation
       guard matches.count <= 1 else {
         throw MonitorError.invalid("ambiguous session_id for missing agentPid")
       }
-      if let known = matches.first {
+      if let known = matches.first ?? pendingTUI(for: event) {
         event.agentPid = known.pid
         // The hook ran outside that session's process (daemon, browser host…): its terminal facts
         // describe some other process and must not overwrite the row's (it broke jumps before).
         event.terminal = TerminalInfo()
-        recordDiagnostic("hook 缺少 PID，已通过唯一 sessionId 关联到既有会话 \(known.id)。")
+        recordDiagnostic("hook 缺少 PID，已通过 sessionId 或工作目录关联到既有会话 \(known.id)。")
       }
     } else if byID[event.key] == nil {
       let sidKey = Session.key(kind: event.kind, pid: nil, sessionId: event.sessionId)
@@ -48,6 +48,21 @@ import Observation
     }
     return event
   }
+
+  /// Codex 0.163 runs a TUI's hooks in the shared app-server daemon, so they carry no pid. A TUI
+  /// found before its first prompt has no thread id yet; the first thread in its directory is its
+  /// own. Only an unambiguous match (one waiting TUI in that directory) is used.
+  private func pendingTUI(for event: AgentEvent) -> Session? {
+    guard event.kind == .codex, event.agentId == nil, let cwd = event.cwd else { return nil }
+    let waiting = byID.values.filter {
+      $0.kind == .codex && $0.pid != nil && $0.cwd == cwd
+        && $0.currentSessionId.hasPrefix(Self.pendingSessionPrefix)
+    }
+    return waiting.count == 1 ? waiting.first : nil
+  }
+
+  /// Session id of a scanned Codex TUI whose thread is not known yet.
+  public nonisolated static let pendingSessionPrefix = "pending-"
 
   @discardableResult public func apply(_ original: AgentEvent) throws -> Session {
     let event = try resolveIdentity(original)
@@ -134,7 +149,8 @@ import Observation
     guard var s = byID[id] else {
       var created = Session(
         event: AgentEvent(
-          kind: .codex, sessionId: sessionID ?? "pending-\(process.pid)", agentPid: process.pid,
+          kind: .codex, sessionId: sessionID ?? "\(Self.pendingSessionPrefix)\(process.pid)",
+          agentPid: process.pid,
           cwd: process.cwd, transcriptPath: rolloutPath, at: now, type: .sessionStart(reason: nil),
           terminal: TerminalInfo(tmuxPane: tmuxPane, tty: process.tty)))
       created.source = .processScan
@@ -145,6 +161,12 @@ import Observation
     }
     if s.terminal.tty == nil { s.terminal.tty = process.tty }
     if s.terminal.tmuxPane == nil, let tmuxPane { s.terminal.tmuxPane = tmuxPane }
+    // The thread appeared after the TUI was found (first prompt): adopt it, so a row built from
+    // its pid-less hooks merges into this one (mergeSessionIDDuplicates).
+    if s.currentSessionId.hasPrefix(Self.pendingSessionPrefix), let sessionID {
+      s.currentSessionId = sessionID
+      s.transcriptPath = rolloutPath ?? s.transcriptPath
+    }
     if s.source == .processScan, let running {
       if running, s.state != .working {
         s.state = .working

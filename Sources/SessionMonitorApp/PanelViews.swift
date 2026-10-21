@@ -312,6 +312,9 @@ struct PanelContent: View {
   /// Expands unless the press ended a drag of the panel.
   let expand: () -> Void
   @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+  /// Geometry of the collapsed capsule's chevron, shared with PanelController's click handling.
+  static let chevronSize: CGFloat = 26
+  static let chevronTrailing: CGFloat = 6
 
   private var counts: [(String, Int, Color)] { store.capsuleCounts }
 
@@ -395,10 +398,13 @@ struct PanelContent: View {
             }
           }
           if counts.allSatisfy({ $0.1 == 0 }) { Text("—").foregroundStyle(Theme.textSecondary) }
+          // Clicks are recognized by PanelController (chevronHit); the button is the visual and
+          // the accessibility action.
           Button(action: expand) {
             Image(systemName: "chevron.down")
-          }.buttonStyle(GlassCircleButtonStyle()).help("展开").accessibilityLabel("展开会话列表")
-        }.padding(.leading, 16).padding(.trailing, 6).frame(height: 36)
+          }.buttonStyle(GlassCircleButtonStyle(size: Self.chevronSize))
+            .accessibilityLabel("展开会话列表")
+        }.padding(.leading, 16).padding(.trailing, Self.chevronTrailing).frame(height: 36)
           .fixedSize()  // the capsule is exactly as wide as its content (PanelController measures it)
       }
     }
