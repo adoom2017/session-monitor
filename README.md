@@ -4,6 +4,19 @@
 
 SessionMonitor 是 macOS 14 及以上版本的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态。
 
+<table>
+  <tr>
+    <th>收起</th>
+    <th>展开</th>
+    <th>设置</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="images/panel-collapsed.png" alt="收起状态：按状态显示会话数量的胶囊" width="119"></td>
+    <td valign="top"><img src="images/panel-expanded.png" alt="展开状态：会话列表，显示代理类型、状态和运行时长" width="300"></td>
+    <td valign="top"><img src="images/settings.png" alt="设置页面：安装 Claude Code 与 Codex 的 hook" width="380"></td>
+  </tr>
+</table>
+
 ### 安装与接入
 
 1. 将 `SessionMonitor.app` 放入 `/Applications`，然后启动。
