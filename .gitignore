@@ -7,3 +7,4 @@ dist/
 # docs: only the redacted hook samples used by tests are committed
 docs/*
 !docs/payload-samples/
+images/
