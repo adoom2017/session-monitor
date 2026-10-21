@@ -104,11 +104,7 @@ ditto -c -k --keepParent "$app" "$zip"
 
 if [[ "$make_dmg" == 1 ]]; then
   echo "==> Creating $dmg"
-  staging="$(mktemp -d "${TMPDIR:-/tmp}/sm-dmg.XXXXXX")"
-  trap 'rm -rf "$staging"' EXIT
-  ditto "$app" "$staging/SessionMonitor.app"
-  ln -s /Applications "$staging/Applications"
-  hdiutil create -volname "SessionMonitor" -srcfolder "$staging" -ov -format UDZO "$dmg" >/dev/null
+  scripts/make-dmg.sh "$app" "$dmg"
   codesign --force --timestamp --sign "$identity" "$dmg"
   codesign --verify --verbose=2 "$dmg"
   if [[ -n "$notary_profile" ]]; then

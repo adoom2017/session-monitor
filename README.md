@@ -80,6 +80,8 @@ scripts/package-release.sh \
 
 脚本默认选择钥匙串中唯一的 Developer ID Application 证书；有多个证书时，用 `--identity "签名身份名称"` 指定。`--build` 设置构建号，`--no-dmg` 仅生成 ZIP。省略 `--notary-profile` 时只签名，不提交公证。
 
+DMG 由 `scripts/make-dmg.sh` 生成：打开后是带背景和箭头的拖拽安装窗口，App 在左、Applications 在右。窗口布局由 Finder 写入，首次打包时需要允许终端控制 Finder。
+
 ### 发布到 GitHub
 
 打包并公证后发布：
