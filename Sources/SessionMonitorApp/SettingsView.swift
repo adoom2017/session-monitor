@@ -368,7 +368,7 @@ struct GeneralSettings: View {
       } header: {
         Text("数据")
       } footer: {
-        Text("数据目录 ~/.session-monitor 保存日志、hook 程序和配置备份。")
+        Text("数据目录 ~/.session-monitor 保存日志、hook 程序和配置备份；日志只保留最近 3 天。")
           .font(.caption).foregroundStyle(.secondary)
           .frame(maxWidth: .infinity, alignment: .leading)
       }

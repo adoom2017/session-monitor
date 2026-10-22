@@ -153,4 +153,25 @@ import Testing
     #expect(plainText("__init__ 保留") == "__init__ 保留")
   }
 
+  @Test func appLogKeepsOnlyRecentDays() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "sm-log-\(UUID().uuidString.prefix(8))")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let log = try AppLog(directory: dir)
+    let now = Date()
+    let iso = ISO8601DateFormatter()
+    func line(_ daysAgo: Double, _ text: String) -> String {
+      iso.string(from: now.addingTimeInterval(-daysAgo * 86400)) + " " + text + "\n"
+    }
+    let current = dir.appendingPathComponent("app.log")
+    let rotated = dir.appendingPathComponent("app.log.1")
+    try (line(5, "old") + line(4, "older") + line(2, "kept")).write(to: current, atomically: true, encoding: .utf8)
+    try line(6, "stale").write(to: rotated, atomically: true, encoding: .utf8)
+    try log.write("new", now: now)
+    let text = try String(contentsOf: current, encoding: .utf8)
+    #expect(!text.contains("old") && text.hasPrefix(line(2, "kept")) && text.hasSuffix(" new\n"))
+    #expect(!FileManager.default.fileExists(atPath: rotated.path))
+    let mode = try FileManager.default.attributesOfItem(atPath: current.path)[.posixPermissions] as? Int
+    #expect(mode == 0o600)
+  }
 }
