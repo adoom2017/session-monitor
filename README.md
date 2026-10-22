@@ -2,7 +2,7 @@
 
 ## 使用说明
 
-SessionMonitor 是 macOS 14 及以上版本的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态。
+SessionMonitor 是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态。
 
 <table>
   <tr>
@@ -58,13 +58,7 @@ scripts/build-app.sh
 open build/SessionMonitor.app
 ```
 
-产物为 `build/SessionMonitor.app`，包含应用和 `sm-hook`，默认使用 ad-hoc 签名。
-
-同时构建 Apple Silicon 与 Intel 版本：
-
-```bash
-UNIVERSAL=1 scripts/build-app.sh
-```
+产物为 `build/SessionMonitor.app`，包含应用和 `sm-hook`，默认使用 ad-hoc 签名。只构建 Apple Silicon（arm64）版本，需在 Apple Silicon Mac 上编译。
 
 ### 发布打包
 
@@ -81,7 +75,6 @@ xcrun notarytool store-credentials sessionmonitor-notary \
 ```bash
 scripts/package-release.sh \
   --version 1.0.0 \
-  --universal \
   --notary-profile sessionmonitor-notary
 ```
 

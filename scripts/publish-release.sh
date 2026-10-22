@@ -3,7 +3,7 @@
 #
 #   scripts/publish-release.sh <version> [options]
 #
-#   --build NOTARY_PROFILE   first run package-release.sh (universal, notarized) with this profile
+#   --build NOTARY_PROFILE   first run package-release.sh (notarized) with this profile
 #   --notes FILE             release notes (Markdown); default: generated install notes
 #   --draft                  create the release as a draft
 #   --repo OWNER/NAME        default: the origin remote's GitHub repo
@@ -59,11 +59,11 @@ fi
 
 if [[ -n "$notary_profile" ]]; then
   echo "==> Building and notarizing $version"
-  scripts/package-release.sh --version "$version" --universal --notary-profile "$notary_profile"
+  scripts/package-release.sh --version "$version" --notary-profile "$notary_profile"
 fi
 
 echo "==> Verifying artifacts"
-[[ -f "$dmg" ]] || fail "$dmg not found (build with: scripts/package-release.sh --version $version --universal --notary-profile <profile>)"
+[[ -f "$dmg" ]] || fail "$dmg not found (build with: scripts/package-release.sh --version $version --notary-profile <profile>)"
 [[ -f "$zip" ]] || fail "$zip not found"
 work="$(mktemp -d "${TMPDIR:-/tmp}/sm-publish.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
@@ -92,7 +92,7 @@ if [[ -z "$notes_file" ]]; then
 2. 启动 SessionMonitor，在菜单栏图标 → **设置… → 集成** 中为 Claude Code / Codex 点击 **安装**。
 3. 使用 Codex 时，在任意 Codex 会话中输入 \`/hooks\` 批准 SessionMonitor 的条目。
 
-需要 macOS 14 或以上，Apple Silicon 与 Intel 通用。安装包已签名并通过 Apple 公证。
+需要 macOS 14 或以上，仅支持 Apple Silicon（M 系列芯片）。安装包已签名并通过 Apple 公证。
 
 ## 校验
 

@@ -10,7 +10,6 @@
 #   --build N              CFBundleVersion (default: UTC timestamp yyyymmddHHMM)
 #   --bundle-id ID         CFBundleIdentifier (default local.sessionmonitor.app; changing it resets
 #                          macOS permissions/preferences, which are keyed by bundle id)
-#   --universal            arm64 + x86_64
 #   --no-dmg               only produce the zip
 #
 # Output: dist/SessionMonitor-<version>.zip and dist/SessionMonitor-<version>.dmg
@@ -23,7 +22,6 @@ notary_profile=""
 version="1.0.0"
 build_number="$(date -u +%Y%m%d%H%M)"
 bundle_id="local.sessionmonitor.app"
-universal=0
 make_dmg=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,9 +30,8 @@ while [[ $# -gt 0 ]]; do
     --version) version="$2"; shift 2 ;;
     --build) build_number="$2"; shift 2 ;;
     --bundle-id) bundle_id="$2"; shift 2 ;;
-    --universal) universal=1; shift ;;
     --no-dmg) make_dmg=0; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -60,7 +57,7 @@ rm -rf "$app" "$zip" "$dmg"
 
 echo "==> Building and signing ($version, build $build_number)"
 SIGN_IDENTITY="$identity" APP_DIR="$app" BUNDLE_ID="$bundle_id" APP_VERSION="$version" \
-  APP_BUILD="$build_number" UNIVERSAL="$universal" scripts/build-app.sh
+  APP_BUILD="$build_number" scripts/build-app.sh
 
 echo "==> Verifying signature"
 codesign --verify --deep --strict --verbose=2 "$app"
@@ -70,7 +67,10 @@ grep -q "^Timestamp=" <<<"$details" || { echo "error: secure timestamp missing" 
 grep -q "Authority=Developer ID Application" <<<"$details" || { echo "error: not Developer ID signed" >&2; exit 1; }
 codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q "automation.apple-events" \
   || { echo "error: apple-events entitlement missing" >&2; exit 1; }
-lipo -archs "$app/Contents/MacOS/SessionMonitor"
+for binary in SessionMonitor sm-hook; do
+  [[ "$(lipo -archs "$app/Contents/MacOS/$binary")" == arm64 ]] \
+    || { echo "error: $binary is not arm64-only" >&2; exit 1; }
+done
 
 notarize() {  # $1 = file to submit
   echo "==> Notarizing $(basename "$1") (this usually takes a few minutes)"

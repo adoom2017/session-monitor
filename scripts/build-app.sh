@@ -7,7 +7,7 @@
 #                  macOS permissions and preferences, which are keyed by bundle id)
 #   APP_VERSION    CFBundleShortVersionString (default 1.0.0)
 #   APP_BUILD      CFBundleVersion (default 1)
-#   UNIVERSAL      1 = arm64 + x86_64
+# Apple Silicon only (arm64).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 identity="${SIGN_IDENTITY:--}"
@@ -15,11 +15,10 @@ app="${APP_DIR:-build/SessionMonitor.app}"
 bundle_id="${BUNDLE_ID:-local.sessionmonitor.app}"
 version="${APP_VERSION:-1.0.0}"
 build_number="${APP_BUILD:-1}"
-arch_args=()
-if [[ "${UNIVERSAL:-0}" == 1 ]]; then arch_args=(--arch arm64 --arch x86_64); fi
+[[ "$(uname -m)" == arm64 ]] || { echo "error: build on Apple Silicon (arm64 only)" >&2; exit 1; }
 
-swift build -c release ${arch_args[@]+"${arch_args[@]}"} -Xswiftc -warnings-as-errors
-binary_dir="$(swift build -c release ${arch_args[@]+"${arch_args[@]}"} --show-bin-path)"
+swift build -c release -Xswiftc -warnings-as-errors
+binary_dir="$(swift build -c release --show-bin-path)"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary_dir/SessionMonitor" "$app/Contents/MacOS/SessionMonitor"
