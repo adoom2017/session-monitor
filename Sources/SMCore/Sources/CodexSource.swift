@@ -69,14 +69,20 @@ public struct CodexSource: AgentSource {
     // visible while the process lives even before (or without) any hook event.
     let codexRows = await store.sessions.filter { $0.kind == .codex }
     let known = Set(codexRows.compactMap(\.pid))
-    let pending = Set(
+    // pid → since when the row waits for its thread.
+    let pending = Dictionary(
       codexRows.filter { $0.currentSessionId.hasPrefix(SessionStore.pendingSessionPrefix) }
-        .compactMap(\.pid))
+        .compactMap { row in row.pid.map { ($0, row.stateSince) } },
+      uniquingKeysWith: max)
     for process in try discover() {
       let isNew = !known.contains(process.pid)
-      // A fresh TUI has no rollout until its first prompt: keep looking until it appears.
+      // A fresh TUI has no rollout until its first prompt: keep looking until it appears. Only
+      // rollouts written since the row began waiting count: after /new the previous thread's
+      // rollout is still the newest one in the directory.
       let rollout =
-        isNew || pending.contains(process.pid) ? CodexRolloutIndex.find(for: process) : nil
+        isNew
+        ? CodexRolloutIndex.find(for: process)
+        : pending[process.pid].flatMap { CodexRolloutIndex.find(for: process, after: $0) }
       let pane = isNew ? try await Jumper.tmuxPane(forTTY: process.tty) : nil
       await store.upsertScannedCodex(
         process, sessionID: rollout?.sessionID, rolloutPath: rollout?.path, tmuxPane: pane,
@@ -166,13 +172,15 @@ public enum CodexRolloutIndex {
   }
 
   /// The rollout of a TUI: by `resume <id>`, else the newest rollout in the same directory that
-  /// was written after the process started. Nil for a fresh TUI before its first prompt.
+  /// was written after the process started (and after `after`). Nil for a fresh TUI before its
+  /// first prompt.
   public static func find(
-    for process: CodexProcess,
+    for process: CodexProcess, after: Date? = nil,
     root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
       ".codex/sessions")
   ) -> Match? {
-    let files = recentRollouts(root: root, since: process.startTime)
+    let since = [process.startTime, after].compactMap { $0 }.max()
+    let files = recentRollouts(root: root, since: since)
     if let id = process.resumeID {
       return files.first { $0.lastPathComponent.contains(id) }.map {
         Match(sessionID: id, path: $0.path)

@@ -165,6 +165,8 @@ import Testing
     let fresh = CodexProcess(
       pid: 3, tty: "/dev/ttys3", cwd: "/work/meitu", startTime: Date().addingTimeInterval(60))
     #expect(CodexRolloutIndex.find(for: fresh, root: root) == nil)
+    // A row waiting since after the newest rollout (after /new) does not re-adopt it.
+    #expect(CodexRolloutIndex.find(for: byDirectory, after: Date().addingTimeInterval(60), root: root) == nil)
   }
 
   @Test @MainActor func scannedRowsStayUntilProcessExitsAndYieldToHooks() throws {
@@ -304,6 +306,39 @@ import Testing
     store.mergeSessionIDDuplicates()
     let row = try #require(store.sessions.first)
     #expect(store.sessions.count == 1 && row.id == "codex:\(getpid())" && row.terminal.termProgram == nil)
+  }
+
+  /// Real case (app-package, 2026-10-22): /new in a running TUI ended its thread (SessionEnd).
+  /// The row was dropped after 30s, re-found with the old thread's rollout, and the new thread's
+  /// pid-less hooks built a second row that could not jump.
+  @MainActor @Test func newThreadInRunningTUIStaysOnItsRow() throws {
+    let store = SessionStore()
+    let base = Date()
+    let process = CodexProcess(pid: getpid(), tty: "/dev/ttys011", cwd: "/work/app", startTime: nil)
+    store.upsertScannedCodex(
+      process, sessionID: "old", rolloutPath: "/old.jsonl", tmuxPane: "%6", running: nil, now: base)
+    try store.apply(
+      AgentEvent(
+        kind: .codex, sessionId: "old", agentPid: nil, cwd: "/work/app",
+        at: base.addingTimeInterval(1), type: .sessionEnd(reason: "other")))
+    #expect(store.sessions.first?.state == .ended)
+    // The next scan still finds the process: the row waits for the next thread.
+    store.upsertScannedCodex(
+      process, sessionID: nil, rolloutPath: nil, tmuxPane: nil, running: nil, now: base.addingTimeInterval(2))
+    var row = try #require(store.sessions.first)
+    #expect(row.state == .idle && row.endedAt == nil && row.transcriptPath == nil)
+    #expect(row.currentSessionId.hasPrefix(SessionStore.pendingSessionPrefix))
+    #expect(row.terminal.tmuxPane == "%6" && row.terminal.tty == "/dev/ttys011")
+    // Not dropped by the 30s rule for ended rows.
+    store.reconcile(files: [], liveness: [getpid(): true], now: base.addingTimeInterval(60))
+    #expect(store.sessions.count == 1)
+    row = try store.apply(
+      AgentEvent(
+        kind: .codex, sessionId: "new", agentPid: nil, cwd: "/work/app",
+        at: base.addingTimeInterval(120), type: .promptSubmitted,
+        terminal: TerminalInfo(termProgram: CodexSource.desktopProgram)))
+    #expect(store.sessions.count == 1 && row.id == "codex:\(getpid())" && row.currentSessionId == "new")
+    #expect(row.terminal.tmuxPane == "%6" && row.terminal.termProgram == nil)
   }
 
   @MainActor @Test func staleEndedSessionIDRowIsDroppedNotMerged() throws {

@@ -146,17 +146,35 @@ import Observation
     running: Bool?, now: Date
   ) {
     let id = Session.key(kind: .codex, pid: process.pid, sessionId: "")
-    guard var s = byID[id] else {
+    @discardableResult
+    func create(sessionID: String?, rolloutPath: String?, terminal: TerminalInfo) -> Session {
       var created = Session(
         event: AgentEvent(
           kind: .codex, sessionId: sessionID ?? "\(Self.pendingSessionPrefix)\(process.pid)",
           agentPid: process.pid,
           cwd: process.cwd, transcriptPath: rolloutPath, at: now, type: .sessionStart(reason: nil),
-          terminal: TerminalInfo(tmuxPane: tmuxPane, tty: process.tty)))
+          terminal: terminal))
       created.source = .processScan
       created.state = running == true ? .working : .idle
       byID[id] = created
+      return created
+    }
+    guard var s = byID[id] else {
+      let created = create(
+        sessionID: sessionID, rolloutPath: rolloutPath,
+        terminal: TerminalInfo(tmuxPane: tmuxPane, tty: process.tty))
       recordDiagnostic("发现运行中的 Codex 会话 \(process.pid)（\(created.projectName)），等待其 hook 事件。")
+      return
+    }
+    // The thread ended (SessionEnd) but the TUI still runs: /new or /clear started another thread,
+    // which has no rollout until its first prompt. Wait for it like a fresh TUI (pending id), so
+    // its pid-less hooks attach here; never re-adopt the ended thread.
+    if s.state == .ended {
+      var terminal = s.terminal
+      terminal.tty = process.tty
+      if let tmuxPane { terminal.tmuxPane = tmuxPane }
+      create(sessionID: nil, rolloutPath: nil, terminal: terminal)
+      recordDiagnostic("Codex 会话 \(process.pid)（\(s.projectName)）结束了上一个对话但仍在运行，等待新对话的 hook 事件。")
       return
     }
     if s.terminal.tty == nil { s.terminal.tty = process.tty }
