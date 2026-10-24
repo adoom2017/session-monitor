@@ -116,6 +116,8 @@ import UIKit
             hello: Hello(deviceName: Self.deviceName, token: server.token, pairingCode: nil))
           if Task.isCancelled { link.close(); return }
           self.link = link
+          // Requests sent on the previous connection got no answer; let them be asked again.
+          loadingOlder.removeAll()
           connection = .connected(host: welcome.host)
           remember(host: welcome.host, of: server)
           delay = 1
@@ -172,6 +174,7 @@ import UIKit
       sessions.removeValue(forKey: id)
     case .transcript(let id, let entries, let reset, let older):
       if reset {
+        loadingOlder.remove(id)
         transcripts[id] = entries
         if older { hasOlder.insert(id) } else { hasOlder.remove(id) }
       } else {
@@ -218,9 +221,16 @@ import UIKit
 
   /// The page before the oldest loaded entry.
   func loadOlder(_ id: String) {
-    guard hasOlder.contains(id), !loadingOlder.contains(id), let first = transcripts[id]?.first else { return }
+    guard hasOlder.contains(id), !loadingOlder.contains(id), let first = transcripts[id]?.first,
+      let link
+    else { return }
     loadingOlder.insert(id)
-    Task { try? await link?.send(.loadOlderTranscript(sessionId: id, beforeId: first.id)) }
+    Task {
+      // A request lost to a dropped connection must not leave the page waiting forever.
+      do { try await link.send(.loadOlderTranscript(sessionId: id, beforeId: first.id)) } catch {
+        loadingOlder.remove(id)
+      }
+    }
   }
 
   func close(_ id: String) {

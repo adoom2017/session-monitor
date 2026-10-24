@@ -22,8 +22,10 @@ struct ConversationView: View {
               if hasOlder {
                 ProgressView()
                   .frame(maxWidth: .infinity).padding(.vertical, 6)
-                  // Reaching the top loads the page before; the list keeps its position by id.
-                  .onAppear(perform: loadOlder)
+                  // Reaching the top loads the page before. Keyed by the oldest entry, so a page
+                  // that arrived while the spinner stayed on screen asks for the next one (an
+                  // onAppear alone fired once and left the spinner turning).
+                  .task(id: entries.first?.id) { loadOlder() }
               }
               ForEach(entries) { EntryView(entry: $0).id($0.id) }
               if let live { LiveCard(live: live).id("live") }
@@ -37,6 +39,13 @@ struct ConversationView: View {
           // Keep following new output only while the reader is at the bottom.
           .onChange(of: entries.last?.id) { _, _ in
             if followBottom { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+          }
+          // An older page went in above: stay on the entry being read instead of the top,
+          // which also moves the spinner off screen.
+          .onChange(of: entries.first?.id) { previous, _ in
+            if let previous, entries.contains(where: { $0.id == previous }) {
+              proxy.scrollTo(previous, anchor: .top)
+            }
           }
           .onChange(of: live?.text) { _, _ in
             if followBottom { proxy.scrollTo("bottom", anchor: .bottom) }
