@@ -27,8 +27,10 @@ targets:
         CFBundleVersion: "1"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # iPad multitasking requires every orientation.
         UISupportedInterfaceOrientations~ipad:
-          [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
+           UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         NSLocalNetworkUsageDescription: 连接同一局域网或 Tailscale 中的 Mac，查看会话状态并发送消息。
         NSBonjourServices: [_sessionmonitor._tcp]
         NSCameraUsageDescription: 扫描 Mac 上 SessionMonitor 显示的配对二维码。

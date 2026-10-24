@@ -250,7 +250,7 @@ import Testing
     connection.close()
 
     // The code was used up; the token works until revoked.
-    await #expect(throws: RemoteClientError.self) {
+    await #expect(throws: RemoteClientError.rejected("配对码无效或已过期")) {
       _ = try await RemoteConnection.connect(
         hosts: payload.hosts, port: port, fingerprint: payload.fingerprint,
         hello: Hello(deviceName: "again", token: nil, pairingCode: payload.code))
@@ -260,7 +260,8 @@ import Testing
       hello: Hello(deviceName: "Test Phone", token: token, pairingCode: nil))
     second.close()
     try hub.revoke(deviceID: welcome.deviceId)
-    await #expect(throws: RemoteClientError.self) {
+    // The reason must reach the client (not just a reset), so it stops retrying and re-pairs.
+    await #expect(throws: RemoteClientError.rejected("此设备未配对或已被吊销，请重新配对")) {
       _ = try await RemoteConnection.connect(
         hosts: payload.hosts, port: port, fingerprint: payload.fingerprint,
         hello: Hello(deviceName: "Test Phone", token: token, pairingCode: nil))

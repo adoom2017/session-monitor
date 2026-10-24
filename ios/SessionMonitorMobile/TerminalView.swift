@@ -8,7 +8,7 @@ import UIKit
 struct TerminalView: View {
   let pane: PaneSnapshot?
   @AppStorage("terminalLayoutMode") private var layoutMode = false
-  static let background = Color(red: 0x0F / 255, green: 0x14 / 255, blue: 0x22 / 255)
+  nonisolated static let background = Color(red: 0x0F / 255, green: 0x14 / 255, blue: 0x22 / 255)
   static let readingFont: CGFloat = 11
   static let minimumFont: CGFloat = 7
   static let maximumFont: CGFloat = 13

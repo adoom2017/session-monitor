@@ -55,6 +55,7 @@ struct SessionListView: View {
 /// Connection state, shown only when not simply connected.
 struct ConnectionBanner: View {
   @Environment(MobileModel.self) private var model
+  @State private var repairing = false
 
   var body: some View {
     switch model.connection {
@@ -71,9 +72,14 @@ struct ConnectionBanner: View {
           Text("将自动重试。请确认手机与 Mac 在同一局域网，或都已连接 Tailscale。")
             .font(.caption).foregroundStyle(Theme.textSecondary)
         } else {
-          Button("重新连接") { model.connect() }.font(.caption.weight(.semibold))
+          HStack(spacing: 16) {
+            Button("重新配对") { repairing = true }
+            Button("重新连接") { model.connect() }
+          }
+          .font(.caption.weight(.semibold))
         }
       }
+      .sheet(isPresented: $repairing) { PairingView(dismissible: true) }
     }
   }
 }

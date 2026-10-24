@@ -22,6 +22,19 @@ public final class RemotePeer: @unchecked Sendable, Hashable {
 
   public func close() { connection.cancel() }
 
+  /// Sends the error, then closes once it is on the wire (closing right away dropped the message,
+  /// so a revoked phone only saw a reset and kept retrying).
+  public func reject(_ message: String) {
+    guard let data = try? RemoteProtocol.encoder().encode(ServerMessage.error(message: message)) else {
+      return close()
+    }
+    let metadata = NWProtocolWebSocket.Metadata(opcode: .text)
+    let context = NWConnection.ContentContext(identifier: "error", metadata: [metadata])
+    connection.send(
+      content: data, contentContext: context, isComplete: true,
+      completion: .contentProcessed { [connection] _ in connection.cancel() })
+  }
+
   public static func == (a: RemotePeer, b: RemotePeer) -> Bool { a.id == b.id }
   public func hash(into hasher: inout Hasher) { hasher.combine(id) }
 }

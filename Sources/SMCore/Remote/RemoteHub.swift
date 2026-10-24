@@ -102,8 +102,7 @@ import SMProtocol
   public func revoke(deviceID: String) throws {
     try devices.revoke(id: deviceID)
     for client in clients.values where client.device?.id == deviceID {
-      client.peer.send(.error(message: "此设备已被 Mac 吊销"))
-      client.peer.close()
+      client.peer.reject("此设备已被 Mac 吊销")
     }
     audit("REMOTE 已吊销设备 \(deviceID)")
   }
@@ -124,8 +123,7 @@ import SMProtocol
       Task { [weak self] in
         try? await Task.sleep(for: Self.helloTimeout)
         guard let self, let client = clients[peer.id], client.device == nil else { return }
-        peer.send(.error(message: "未在规定时间内完成认证"))
-        peer.close()
+        peer.reject("未在规定时间内完成认证")
       }
     case .disconnected(let peer):
       clients.removeValue(forKey: peer.id)
@@ -137,8 +135,7 @@ import SMProtocol
       } else if client.device != nil {
         perform(message, for: client)
       } else {
-        peer.send(.error(message: "请先认证"))
-        peer.close()
+        peer.reject("请先认证")
       }
     }
   }
@@ -150,13 +147,11 @@ import SMProtocol
     let recent = (failures[peer.host] ?? []).filter { now.timeIntervalSince($0) < 60 }
     failures[peer.host] = recent
     guard recent.count < 5 else {
-      peer.send(.error(message: "失败次数过多，请一分钟后再试"))
-      peer.close()
+      peer.reject("失败次数过多，请一分钟后再试")
       return
     }
     guard hello.version == RemoteProtocol.version else {
-      peer.send(.error(message: "协议版本不一致（Mac \(RemoteProtocol.version)，手机 \(hello.version)），请更新"))
-      peer.close()
+      peer.reject("协议版本不一致（Mac \(RemoteProtocol.version)，手机 \(hello.version)），请更新")
       return
     }
     var issued: String?
@@ -171,8 +166,7 @@ import SMProtocol
     } else {
       failures[peer.host, default: []].append(now)
       audit("REMOTE 认证失败（\(peer.host)，\(hello.token == nil ? "配对码" : "令牌")）")
-      peer.send(.error(message: hello.token == nil ? "配对码无效或已过期" : "此设备未配对或已被吊销，请重新配对"))
-      peer.close()
+      peer.reject(hello.token == nil ? "配对码无效或已过期" : "此设备未配对或已被吊销，请重新配对")
       return
     }
     guard let device = client.device else { return }
