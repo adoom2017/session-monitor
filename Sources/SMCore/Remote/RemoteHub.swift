@@ -244,20 +244,19 @@ import SMProtocol
       }
       for (id, previous) in client.panes {
         guard let session = session(publicID: id) else { continue }
-        guard let text = try? await TmuxRemote.capture(session) else { continue }
+        guard let screen = try? await TmuxRemote.screen(session) else { continue }
         // The client may have unsubscribed while capturing.
-        guard client.panes[id] != nil, text != previous else { continue }
-        client.panes[id] = text
-        client.peer.send(.pane(Self.pane(id: id, text: text)))
+        guard client.panes[id] != nil, screen.styled != previous else { continue }
+        client.panes[id] = screen.styled
+        client.peer.send(.pane(Self.pane(id: id, screen: screen)))
       }
     }
   }
 
-  nonisolated static func pane(id: String, text: String) -> PaneSnapshot {
-    let lines = text.components(separatedBy: "\n")
-    return PaneSnapshot(
-      sessionId: id, text: lines.suffix(120).joined(separator: "\n"),
-      menu: PaneMenuParser.parse(text))
+  nonisolated static func pane(id: String, screen: TmuxRemote.Screen) -> PaneSnapshot {
+    PaneSnapshot(
+      sessionId: id, text: screen.styled.components(separatedBy: "\n").suffix(120).joined(separator: "\n"),
+      menu: PaneMenuParser.parse(screen.plain), columns: screen.columns, styled: true)
   }
 
   /// Starts (or restarts) a conversation feed and sends its recent entries as a reset batch.

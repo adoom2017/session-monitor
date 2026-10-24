@@ -71,6 +71,32 @@ public enum TmuxRemote {
     return lines.joined(separator: "\n")
   }
 
+  public struct Screen: Sendable, Equatable {
+    /// Lines as laid out in the pane, with SGR escapes.
+    public let styled: String
+    public let plain: String
+    public let columns: Int
+  }
+
+  /// The pane as the user sees it: original line breaks (no joining), colors kept.
+  public static func screen(_ session: Session) async throws -> Screen {
+    let target = try await target(for: session)
+    let width = try await Jumper.runTmux(
+      target.executable, target.base + ["display-message", "-p", "-t", target.pane, "#{pane_width}"]
+    ).stdout
+    let text = try await Jumper.runTmux(
+      target.executable, target.base + ["capture-pane", "-p", "-e", "-t", target.pane]
+    ).stdout
+    var lines = text.components(separatedBy: "\n")
+    while let last = lines.last, ANSI.strip(last).trimmingCharacters(in: .whitespaces).isEmpty {
+      lines.removeLast()
+    }
+    let styled = lines.joined(separator: "\n")
+    return Screen(
+      styled: styled, plain: ANSI.strip(styled),
+      columns: Int(width.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 80)
+  }
+
   /// Bracketed paste of the text, then Enter (R0: both agents submit it unchanged). Refused while
   /// a numbered menu is on screen: Enter would pick its default option (R0 incident).
   /// `submitted` tells whether the agent took the prompt (a hook moved the session to working).
@@ -175,3 +201,15 @@ public enum PaneMenuParser {
     return block.options
   }
 }
+
+enum ANSI {
+  /// CSI sequences (colors, cursor…) and OSC sequences (titles, links).
+  static let pattern = try! NSRegularExpression(
+    pattern: "\u{1B}\\[[0-9;:?<=>]*[ -/]*[@-~]|\u{1B}\\][^\u{07}\u{1B}]*(?:\u{07}|\u{1B}\\\\)|\u{1B}[@-Z\\\\-_]")
+
+  static func strip(_ text: String) -> String {
+    pattern.stringByReplacingMatches(
+      in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
+  }
+}
+

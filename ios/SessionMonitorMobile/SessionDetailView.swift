@@ -4,7 +4,12 @@ import SwiftUI
 struct SessionDetailView: View {
   let sessionID: String
   @Environment(MobileModel.self) private var model
-  @State private var tab = Tab.conversation
+  #if DEBUG
+    // `-SMTab 终端` opens the terminal tab (screenshots in testing).
+    @State private var tab = Tab(rawValue: UserDefaults.standard.string(forKey: "SMTab") ?? "") ?? .conversation
+  #else
+    @State private var tab = Tab.conversation
+  #endif
   @State private var draft = ""
   @State private var confirmBusySend = false
   @FocusState private var inputFocused: Bool
@@ -230,25 +235,5 @@ struct EntryView: View {
       markdown: text,
       options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace, failurePolicy: .returnPartiallyParsedIfPossible)))
       ?? AttributedString(text)
-  }
-}
-
-struct TerminalView: View {
-  let pane: PaneSnapshot?
-
-  var body: some View {
-    if let pane {
-      ScrollView {
-        Text(pane.text)
-          .font(.system(size: 11, design: .monospaced))
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .padding(12)
-          .textSelection(.enabled)
-      }
-      .defaultScrollAnchor(.bottom)
-      .background(Color.black.opacity(0.04))
-    } else {
-      ProgressView("正在读取终端画面…").frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
   }
 }

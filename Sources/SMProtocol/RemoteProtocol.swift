@@ -97,13 +97,20 @@ public struct MenuOption: Codable, Sendable, Equatable {
 
 public struct PaneSnapshot: Codable, Sendable, Equatable {
   public var sessionId: String
+  /// The visible lines as laid out in the pane (not re-wrapped). With `styled`, SGR escape
+  /// sequences (colors, bold…) are kept for the client to render.
   public var text: String
   public var menu: [MenuOption]
+  /// Pane width in columns, so the client can scale the font to fit.
+  public var columns: Int?
+  public var styled: Bool?
 
-  public init(sessionId: String, text: String, menu: [MenuOption]) {
+  public init(sessionId: String, text: String, menu: [MenuOption], columns: Int? = nil, styled: Bool? = nil) {
     self.sessionId = sessionId
     self.text = text
     self.menu = menu
+    self.columns = columns
+    self.styled = styled
   }
 }
 

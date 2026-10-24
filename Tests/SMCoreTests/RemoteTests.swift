@@ -115,6 +115,13 @@ import Testing
     #expect(PaneMenuParser.parse(old).isEmpty)
   }
 
+  @Test func styledScreensAreStrippedForMenus() {
+    let styled = "\u{1B}[1m Do you want to proceed?\u{1B}[0m\n \u{1B}[38;5;153m❯ 1. Yes\u{1B}[39m\n   2. No\n\u{1B}]8;;https://x\u{07}link\u{1B}]8;;\u{07}"
+    let plain = ANSI.strip(styled)
+    #expect(plain == " Do you want to proceed?\n ❯ 1. Yes\n   2. No\nlink")
+    #expect(PaneMenuParser.parse(plain).map(\.label) == ["Yes", "No"])
+  }
+
   @Test func paneAncestryIsChecked() throws {
     let parents: [Int32: Int32] = [500: 400, 400: 300, 300: 1]
     let lookup: (Int32) throws -> Int32 = { parents[$0] ?? 1 }
