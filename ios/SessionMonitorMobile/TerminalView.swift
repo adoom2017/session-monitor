@@ -8,7 +8,7 @@ import UIKit
 struct TerminalView: View {
   let pane: PaneSnapshot?
   @AppStorage("terminalLayoutMode") private var layoutMode = false
-  nonisolated static let background = Color(red: 0x0F / 255, green: 0x14 / 255, blue: 0x22 / 255)
+  nonisolated static let background = ANSIRenderer.backgroundRGB.color
   static let readingFont: CGFloat = 11
   static let minimumFont: CGFloat = 7
   static let maximumFont: CGFloat = 13
@@ -102,11 +102,60 @@ struct TerminalView: View {
   }
 }
 
+/// An sRGB color with the arithmetic needed for contrast checks.
+struct RGB: Equatable {
+  var r: Double, g: Double, b: Double
+
+  init(_ r: Double, _ g: Double, _ b: Double) {
+    self.r = r
+    self.g = g
+    self.b = b
+  }
+  init(hex: UInt32) {
+    self.init(Double(hex >> 16 & 0xFF) / 255, Double(hex >> 8 & 0xFF) / 255, Double(hex & 0xFF) / 255)
+  }
+
+  var color: Color { Color(red: r, green: g, blue: b) }
+
+  /// WCAG relative luminance.
+  var luminance: Double {
+    func channel(_ c: Double) -> Double { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+  }
+
+  func contrast(with other: RGB) -> Double {
+    let (a, b) = (luminance, other.luminance)
+    return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+  }
+
+  func mixed(with other: RGB, _ amount: Double) -> RGB {
+    RGB(r + (other.r - r) * amount, g + (other.g - g) * amount, b + (other.b - b) * amount)
+  }
+
+  /// This color moved toward white or black, whichever can stand out more from `background`,
+  /// until it reaches `ratio`; hue is kept as far as the ratio allows. (Mid-bright backgrounds
+  /// such as a powerline prompt's orange cannot reach 4.5:1 with white text.)
+  func readable(on background: RGB, ratio: Double) -> RGB {
+    guard contrast(with: background) < ratio else { return self }
+    let white = RGB(1, 1, 1), black = RGB(0, 0, 0)
+    let target = white.contrast(with: background) >= black.contrast(with: background) ? white : black
+    var amount = 0.0
+    var result = self
+    while result.contrast(with: background) < ratio, amount < 1 {
+      amount += 0.05
+      result = mixed(with: target, amount)
+    }
+    return result
+  }
+}
+
 /// SGR escape sequences (ESC [ … m) to AttributedString runs; other escapes are dropped.
+/// Every run is made readable on its background: TUIs pick dark grays (and black) that vanish on
+/// the dark terminal, especially with a light terminal theme.
 enum ANSIRenderer {
   struct Style: Equatable {
-    var foreground: Color?
-    var background: Color?
+    var foreground: RGB?
+    var background: RGB?
     var bold = false
     var dim = false
     var italic = false
@@ -114,7 +163,12 @@ enum ANSIRenderer {
     var inverse = false
   }
 
-  static let defaultForeground = Color(red: 0.86, green: 0.88, blue: 0.92)
+  static let defaultForegroundRGB = RGB(0.86, 0.88, 0.92)
+  static let defaultForeground = defaultForegroundRGB.color
+  static let backgroundRGB = RGB(hex: 0x0F1422)
+  /// Minimum contrast: normal text (WCAG AA) and dim text (still lighter, but legible).
+  static let textContrast = 4.5
+  static let dimContrast = 3.0
 
   /// The text without escape sequences.
   static func strip(_ text: String) -> String {
@@ -171,16 +225,24 @@ enum ANSIRenderer {
     return result
   }
 
-  static func apply(_ style: Style, to piece: inout AttributedString) {
-    var foreground = style.foreground ?? defaultForeground
+  /// The colors a run is drawn with: inverse applied, dim and contrast enforced.
+  static func colors(for style: Style) -> (foreground: RGB, background: RGB?) {
+    var foreground = style.foreground ?? defaultForegroundRGB
     var background = style.background
     if style.inverse {
-      let swapped = background ?? TerminalView.background
+      let swapped = background ?? backgroundRGB
       background = foreground
       foreground = swapped
     }
-    piece.foregroundColor = style.dim ? foreground.opacity(0.6) : foreground
-    if let background { piece.backgroundColor = background }
+    let behind = background ?? backgroundRGB
+    if style.dim { foreground = foreground.mixed(with: behind, 0.35) }
+    return (foreground.readable(on: behind, ratio: style.dim ? dimContrast : textContrast), background)
+  }
+
+  static func apply(_ style: Style, to piece: inout AttributedString) {
+    let (foreground, background) = colors(for: style)
+    piece.foregroundColor = foreground.color
+    if let background { piece.backgroundColor = background.color }
     if style.bold { piece.inlinePresentationIntent = .stronglyEmphasized }
     if style.italic {
       piece.inlinePresentationIntent = (piece.inlinePresentationIntent ?? []).union(.emphasized)
@@ -213,13 +275,12 @@ enum ANSIRenderer {
       case 49: style.background = nil
       case 38, 48:
         // 38;5;n (256 colors) or 38;2;r;g;b (true color).
-        var color: Color?
+        var color: RGB?
         if k + 2 < codes.count, codes[k + 1] == 5 {
           color = xterm(codes[k + 2])
           k += 2
         } else if k + 4 < codes.count, codes[k + 1] == 2 {
-          color = Color(
-            red: Double(codes[k + 2]) / 255, green: Double(codes[k + 3]) / 255, blue: Double(codes[k + 4]) / 255)
+          color = RGB(Double(codes[k + 2]) / 255, Double(codes[k + 3]) / 255, Double(codes[k + 4]) / 255)
           k += 4
         }
         if code == 38 { style.foreground = color } else { style.background = color }
@@ -229,23 +290,24 @@ enum ANSIRenderer {
     }
   }
 
-  /// The 16 base colors, tuned for the dark background.
-  static let palette: [Color] = [
-    0x1B2030, 0xFF5F6D, 0x30D158, 0xFFD60A, 0x4C8DFF, 0xBF5AF2, 0x40C8E0, 0xC7CCD6,
-    0x6E7687, 0xFF7B85, 0x5EE07F, 0xFFE45C, 0x7AA8FF, 0xD48CF7, 0x70DCEC, 0xFFFFFF,
-  ].map { Color(red: Double($0 >> 16 & 0xFF) / 255, green: Double($0 >> 8 & 0xFF) / 255, blue: Double($0 & 0xFF) / 255) }
+  /// The 16 base colors, tuned for the dark background ("black" is a dark gray, so a black
+  /// background block stays visible; black text is lifted by the contrast check).
+  static let palette: [RGB] = [
+    0x2A3042, 0xFF5F6D, 0x30D158, 0xFFD60A, 0x5B9BFF, 0xC77DF5, 0x40C8E0, 0xC7CCD6,
+    0x8A93A6, 0xFF7B85, 0x5EE07F, 0xFFE45C, 0x8AB4FF, 0xD9A0F9, 0x70DCEC, 0xFFFFFF,
+  ].map(RGB.init(hex:))
 
-  static func xterm(_ n: Int) -> Color {
+  static func xterm(_ n: Int) -> RGB {
     switch n {
     case 0..<16: return palette[n]
     case 16..<232:
       let v = n - 16
       func level(_ x: Int) -> Double { x == 0 ? 0 : Double(55 + x * 40) / 255 }
-      return Color(red: level(v / 36), green: level(v / 6 % 6), blue: level(v % 6))
+      return RGB(level(v / 36), level(v / 6 % 6), level(v % 6))
     case 232..<256:
       let gray = Double(8 + (n - 232) * 10) / 255
-      return Color(red: gray, green: gray, blue: gray)
-    default: return defaultForeground
+      return RGB(gray, gray, gray)
+    default: return defaultForegroundRGB
     }
   }
 }

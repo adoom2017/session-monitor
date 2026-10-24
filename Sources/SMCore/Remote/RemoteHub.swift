@@ -273,7 +273,8 @@ import SMProtocol
 
   nonisolated static func pane(id: String, screen: TmuxRemote.Screen) -> PaneSnapshot {
     PaneSnapshot(
-      sessionId: id, text: screen.styled.components(separatedBy: "\n").suffix(120).joined(separator: "\n"),
+      sessionId: id,
+      text: screen.styled.components(separatedBy: "\n").suffix(TmuxRemote.scrollback + 60).joined(separator: "\n"),
       menu: PaneMenuParser.parse(screen.plain), columns: screen.columns, styled: true)
   }
 

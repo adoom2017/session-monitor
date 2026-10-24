@@ -78,14 +78,19 @@ public enum TmuxRemote {
     public let columns: Int
   }
 
-  /// The pane as the user sees it: original line breaks (no joining), colors kept.
+  /// Lines of scrollback included above the visible screen: a long reply pushes the prompt that
+  /// started the turn off screen, and the phone's live view needs it to find where the turn begins.
+  static let scrollback = 200
+
+  /// The pane as the user sees it plus recent scrollback: original line breaks (no joining),
+  /// colors kept.
   public static func screen(_ session: Session) async throws -> Screen {
     let target = try await target(for: session)
     let width = try await Jumper.runTmux(
       target.executable, target.base + ["display-message", "-p", "-t", target.pane, "#{pane_width}"]
     ).stdout
     let text = try await Jumper.runTmux(
-      target.executable, target.base + ["capture-pane", "-p", "-e", "-t", target.pane]
+      target.executable, target.base + ["capture-pane", "-p", "-e", "-S", "-\(scrollback)", "-t", target.pane]
     ).stdout
     var lines = text.components(separatedBy: "\n")
     while let last = lines.last, ANSI.strip(last).trimmingCharacters(in: .whitespaces).isEmpty {

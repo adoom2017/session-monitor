@@ -35,12 +35,16 @@ struct SessionDetailView: View {
             ConversationView(
               sessionID: sessionID, entries: model.transcripts[sessionID],
               hasOlder: model.hasOlder.contains(sessionID),
-              live: session.state == .working ? pane.flatMap { LiveOutput.extract($0, agent: session.agent) } : nil,
+              // Also while it waits for permission or input: the card shows what it is asking.
+              live: [.working, .needsPermission, .needsInput].contains(session.state)
+                ? pane.flatMap { LiveOutput.extract($0, agent: session.agent) } : nil,
               loadOlder: { model.loadOlder(sessionID) })
           case .terminal: TerminalView(pane: pane)
           }
         }
         .frame(maxHeight: .infinity)
+        // Scrolling puts the keyboard away; taps outside are handled by KeyboardDismisser.
+        .scrollDismissesKeyboard(.interactively)
         bottomBar(session)
       } else {
         ContentUnavailableView("会话已结束", systemImage: "xmark.circle", description: Text("Mac 上已不再显示这个会话。"))

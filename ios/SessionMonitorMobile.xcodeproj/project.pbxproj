@@ -9,7 +9,9 @@
 /* Begin PBXBuildFile section */
 		0AC5AA65FA3A110FCE07692E /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E97ED7C432175E5C0B0C6B35 /* SessionListView.swift */; };
 		16CCADE465F2E60E45E2FC90 /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BA4A164D334B904756F636D /* ConversationView.swift */; };
+		1C98C5D873C2C126DC0CE050 /* KeyboardUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F982E47F4F4E6B6E75AF5A /* KeyboardUITests.swift */; };
 		21F7DA7A90D6F42F45EFA44C /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EBDD98A497AC94E7E11690E /* Theme.swift */; };
+		256B19F093595D1367044235 /* KeyboardDismisser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FAE6C7A5831C76496F2B64 /* KeyboardDismisser.swift */; };
 		2E6DDC892748F5B0F1CF005B /* PullUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3CDB6E0749F0940CE97D87 /* PullUITests.swift */; };
 		374BE9C87BBF84FC502E7593 /* RemoteFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */; };
 		763D4E1C62B3762C0E33B83C /* SMProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 9C391C7EEFAB2E4FF9B26ABB /* SMProtocol */; };
@@ -39,16 +41,18 @@
 		1A208FAC8137DA131206E67C /* HistoryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryUITests.swift; sourceTree = "<group>"; };
 		1A9EF7DBF6D7B5DEC54E1428 /* ServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStore.swift; sourceTree = "<group>"; };
 		2EBDD98A497AC94E7E11690E /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
-		477A5403085B3172BF7E1DF4 /* SessionMonitorMobileUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SessionMonitorMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		477A5403085B3172BF7E1DF4 /* SessionMonitorMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SessionMonitorMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		560EBEA5E202D7BB57CB352A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6B0159E64D251A8909F2D1AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		6BA4A164D334B904756F636D /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		789E054B6E48970D87D7A78A /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFlowUITests.swift; sourceTree = "<group>"; };
+		B8FAE6C7A5831C76496F2B64 /* KeyboardDismisser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDismisser.swift; sourceTree = "<group>"; };
 		CAD06F81AEADC5DC66CC0F49 /* SessionMonitorMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorMobileApp.swift; sourceTree = "<group>"; };
 		CC4DFCDE80C28093807EB9E0 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
-		DF1E0078D984EEBCA7B685BC /* SessionMonitorMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SessionMonitorMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DF1E0078D984EEBCA7B685BC /* SessionMonitorMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SessionMonitorMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E97ED7C432175E5C0B0C6B35 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
+		F6F982E47F4F4E6B6E75AF5A /* KeyboardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardUITests.swift; sourceTree = "<group>"; };
 		F7D667E9F1F380B4F76C70EE /* MobileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModel.swift; sourceTree = "<group>"; };
 		FF3CDB6E0749F0940CE97D87 /* PullUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PullUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -71,6 +75,7 @@
 				560EBEA5E202D7BB57CB352A /* Assets.xcassets */,
 				6BA4A164D334B904756F636D /* ConversationView.swift */,
 				6B0159E64D251A8909F2D1AB /* Info.plist */,
+				B8FAE6C7A5831C76496F2B64 /* KeyboardDismisser.swift */,
 				F7D667E9F1F380B4F76C70EE /* MobileModel.swift */,
 				18EA9E9D4398897BF79B6A22 /* PairingView.swift */,
 				1A9EF7DBF6D7B5DEC54E1428 /* ServerStore.swift */,
@@ -87,6 +92,7 @@
 			isa = PBXGroup;
 			children = (
 				1A208FAC8137DA131206E67C /* HistoryUITests.swift */,
+				F6F982E47F4F4E6B6E75AF5A /* KeyboardUITests.swift */,
 				FF3CDB6E0749F0940CE97D87 /* PullUITests.swift */,
 				7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */,
 			);
@@ -220,6 +226,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CEADBE7CA19E66F4096DCFD7 /* HistoryUITests.swift in Sources */,
+				1C98C5D873C2C126DC0CE050 /* KeyboardUITests.swift in Sources */,
 				2E6DDC892748F5B0F1CF005B /* PullUITests.swift in Sources */,
 				374BE9C87BBF84FC502E7593 /* RemoteFlowUITests.swift in Sources */,
 			);
@@ -230,6 +237,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				16CCADE465F2E60E45E2FC90 /* ConversationView.swift in Sources */,
+				256B19F093595D1367044235 /* KeyboardDismisser.swift in Sources */,
 				B80BCEEF32BA0EFE5CD70664 /* MobileModel.swift in Sources */,
 				AA0B5DA1EC355AD755F573F7 /* PairingView.swift in Sources */,
 				9C50858006A977DB0689D1E7 /* ServerStore.swift in Sources */,
@@ -368,7 +376,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = adoom.sessionmonitor.mobile;
-				PRODUCT_NAME = SessionMonitorMobile;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -448,7 +455,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = adoom.sessionmonitor.mobile;
-				PRODUCT_NAME = SessionMonitorMobile;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

@@ -186,9 +186,11 @@ struct LiveOutput: Equatable {
     guard var end = plain.lastIndex(where: isPrompt) else { return nil }
     if end > 0, isRule(plain[end - 1]) { end -= 1 }
     // The user's message echoed above: the previous prompt line, then its continuation lines.
-    guard let echo = plain[..<end].lastIndex(where: isPrompt) else { return nil }
-    var start = echo + 1
-    while start < end, plain[start].hasPrefix("  "), !plain[start].trimmingCharacters(in: .whitespaces).isEmpty,
+    // Not found (scrolled out even of the scrollback): everything above the input box, rather
+    // than no live view at all.
+    let echo = plain[..<end].lastIndex(where: isPrompt)
+    var start = echo.map { $0 + 1 } ?? 0
+    while echo != nil, start < end, plain[start].hasPrefix("  "), !plain[start].trimmingCharacters(in: .whitespaces).isEmpty,
       !plain[start].contains("⏺"), !plain[start].contains("•")
     {
       start += 1

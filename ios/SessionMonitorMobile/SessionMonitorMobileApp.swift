@@ -10,6 +10,7 @@ struct SessionMonitorMobileApp: App {
     WindowGroup {
       RootView()
         .environment(model)
+        .background(KeyboardDismissInstaller())
         .tint(Theme.blue)
         // Pairing links from the camera app, Notes or a paste: sessionmonitor://pair?d=…
         .onOpenURL { url in
