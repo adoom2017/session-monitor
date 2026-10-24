@@ -8,4 +8,4 @@ dist/
 docs/*
 !docs/payload-samples/
 ios/build/
-ios/*.xcodeproj/
+xcuserdata/

@@ -1,0 +1,9 @@
+{
+  "id" : "18145c21-0cb6-4c12-ab76-f41f7f8efab6",
+  "targets" : [
+    {
+      "id" : "6e322ac1-9bcb-4a86-a985-744d076fb21d",
+      "name" : "SessionMonitorMobile"
+    }
+  ]
+}

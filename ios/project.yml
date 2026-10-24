@@ -1,7 +1,11 @@
 # iOS app for SessionMonitor's phone access (DEV_SPEC §17). Generate the Xcode project with:
 #   cd ios && xcodegen generate
-# The generated SessionMonitorMobile.xcodeproj is not committed.
+# The generated project is committed (Xcode Cloud builds it as is): regenerate and commit it after
+# editing this file.
 name: SessionMonitorMobile
+settings:
+  base:
+    DEVELOPMENT_TEAM: YH6JCRN97J
 options:
   bundleIdPrefix: local.sessionmonitor
   deploymentTarget:
