@@ -43,6 +43,9 @@ targets:
         NSCameraUsageDescription: 扫描 Mac 上 SessionMonitor 显示的配对二维码。
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Only the system's TLS (URLSession) and SHA-256 for certificate pinning: exempt
+        # encryption, so App Store Connect does not ask the export question on each upload.
+        ITSAppUsesNonExemptEncryption: false
         CFBundleURLTypes:
           - CFBundleURLName: local.sessionmonitor.mobile
             CFBundleURLSchemes: [sessionmonitor]
