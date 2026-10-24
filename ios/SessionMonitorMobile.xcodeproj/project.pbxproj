@@ -14,6 +14,7 @@
 		256B19F093595D1367044235 /* KeyboardDismisser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8FAE6C7A5831C76496F2B64 /* KeyboardDismisser.swift */; };
 		2E6DDC892748F5B0F1CF005B /* PullUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF3CDB6E0749F0940CE97D87 /* PullUITests.swift */; };
 		374BE9C87BBF84FC502E7593 /* RemoteFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */; };
+		41F3505902A1F00463783D2F /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B67EB05DE067D6642FA1D650 /* MarkdownView.swift */; };
 		763D4E1C62B3762C0E33B83C /* SMProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 9C391C7EEFAB2E4FF9B26ABB /* SMProtocol */; };
 		9C50858006A977DB0689D1E7 /* ServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9EF7DBF6D7B5DEC54E1428 /* ServerStore.swift */; };
 		A4033B3151265EB514876364 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 789E054B6E48970D87D7A78A /* TerminalView.swift */; };
@@ -47,6 +48,7 @@
 		6BA4A164D334B904756F636D /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		789E054B6E48970D87D7A78A /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFlowUITests.swift; sourceTree = "<group>"; };
+		B67EB05DE067D6642FA1D650 /* MarkdownView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownView.swift; sourceTree = "<group>"; };
 		B8FAE6C7A5831C76496F2B64 /* KeyboardDismisser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDismisser.swift; sourceTree = "<group>"; };
 		CAD06F81AEADC5DC66CC0F49 /* SessionMonitorMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionMonitorMobileApp.swift; sourceTree = "<group>"; };
 		CC4DFCDE80C28093807EB9E0 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 				6BA4A164D334B904756F636D /* ConversationView.swift */,
 				6B0159E64D251A8909F2D1AB /* Info.plist */,
 				B8FAE6C7A5831C76496F2B64 /* KeyboardDismisser.swift */,
+				B67EB05DE067D6642FA1D650 /* MarkdownView.swift */,
 				F7D667E9F1F380B4F76C70EE /* MobileModel.swift */,
 				18EA9E9D4398897BF79B6A22 /* PairingView.swift */,
 				1A9EF7DBF6D7B5DEC54E1428 /* ServerStore.swift */,
@@ -238,6 +241,7 @@
 			files = (
 				16CCADE465F2E60E45E2FC90 /* ConversationView.swift in Sources */,
 				256B19F093595D1367044235 /* KeyboardDismisser.swift in Sources */,
+				41F3505902A1F00463783D2F /* MarkdownView.swift in Sources */,
 				B80BCEEF32BA0EFE5CD70664 /* MobileModel.swift in Sources */,
 				AA0B5DA1EC355AD755F573F7 /* PairingView.swift in Sources */,
 				9C50858006A977DB0689D1E7 /* ServerStore.swift in Sources */,

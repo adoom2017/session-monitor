@@ -75,7 +75,7 @@ struct EntryView: View {
           .textSelection(.enabled)
       }
     case .assistant:
-      Text(Self.markdown(entry.text)).font(.callout)
+      MarkdownView(entry.text).font(.callout)
         .padding(.horizontal, 12).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 16).fill(Theme.raised))
@@ -132,13 +132,6 @@ struct EntryView: View {
       }
     }
     .padding(.horizontal, 4)
-  }
-
-  static func markdown(_ text: String) -> AttributedString {
-    (try? AttributedString(
-      markdown: text,
-      options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace, failurePolicy: .returnPartiallyParsedIfPossible)))
-      ?? AttributedString(text)
   }
 }
 
