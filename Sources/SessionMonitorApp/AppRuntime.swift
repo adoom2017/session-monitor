@@ -177,7 +177,7 @@ import SMCore
     }
   }
 
-  private func writeLog(_ text: String) async {
+  func writeLog(_ text: String) async {
     guard let log else {
       FileHandle.standardError.write(Data((text + "\n").utf8))
       return

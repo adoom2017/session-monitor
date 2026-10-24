@@ -36,6 +36,16 @@ SessionMonitor 是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬�
 
 tmux 会话可定位到对应窗格；使用该功能需要安装 tmux。首次切换终端标签页时，按系统提示允许自动化权限。无法完成跳转时，应用会显示错误并复制会话工作目录。
 
+### 手机访问
+
+在 **设置… → 手机** 中开启"允许手机访问"，用 SessionMonitor 手机 App 扫描页面上的二维码完成配对。手机和 Mac 需要在同一局域网，或都连接 Tailscale。
+
+- 手机上可以查看所有会话的状态和对话内容。
+- tmux 中运行的会话还可以：查看终端画面、发送消息、按 Esc 中断、点选权限菜单的选项。终端正在显示选择菜单时，不能发送文字，以免回车误选默认项。
+- 不在 tmux 中的会话只能查看。
+
+只接受局域网和 Tailscale 地址的连接，通信经 TLS 加密，证书指纹在配对时固定；配对码 5 分钟内有效、只能使用一次。已配对的设备可在同一页面吊销。每次远程操作都会记录到日志。
+
 ### 卸载
 
 在 **设置… → 集成** 中卸载相应 hook。
@@ -59,6 +69,17 @@ open build/SessionMonitor.app
 ```
 
 产物为 `build/SessionMonitor.app`，包含应用和 `sm-hook`，默认使用 ad-hoc 签名。只构建 Apple Silicon（arm64）版本，需在 Apple Silicon Mac 上编译。
+
+### iOS App
+
+需要 [XcodeGen](https://github.com/yonaskolb/XcodeGen)（`brew install xcodegen`）。
+
+```bash
+cd ios && xcodegen generate
+open SessionMonitorMobile.xcodeproj
+```
+
+在 Xcode 中选择模拟器或真机运行；装到真机需要在 target 的 Signing 中选择自己的开发团队。命令行测试客户端：`swift run sm-remote`（用法见 `Sources/sm-remote/main.swift`）。
 
 ### 发布打包
 

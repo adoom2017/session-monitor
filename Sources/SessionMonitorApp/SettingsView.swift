@@ -23,16 +23,18 @@ struct SettingsActions {
   let showLog: () -> Void
   let openDataDirectory: () -> Void
   let report: (any Error, String) -> Void
+  let remote: RemoteAccess
 }
 
 /// One settings tab, shown in the window's toolbar (see AppDelegate.makeSettingsWindow).
 enum SettingsTab: String, CaseIterable {
-  case integration, notifications, general, about
+  case integration, notifications, phone, general, about
 
   var title: String {
     switch self {
     case .integration: "集成"
     case .notifications: "通知"
+    case .phone: "手机"
     case .general: "通用"
     case .about: "关于"
     }
@@ -41,6 +43,7 @@ enum SettingsTab: String, CaseIterable {
     switch self {
     case .integration: "puzzlepiece.extension"
     case .notifications: "bell.badge"
+    case .phone: "iphone"
     case .general: "gearshape"
     case .about: "info.circle"
     }
@@ -50,6 +53,7 @@ enum SettingsTab: String, CaseIterable {
     switch self {
     case .integration: AnyView(IntegrationSettings(actions: actions))
     case .notifications: AnyView(NotificationSettings(actions: actions))
+    case .phone: AnyView(PhoneSettings(remote: actions.remote))
     case .general: AnyView(GeneralSettings(actions: actions))
     case .about: AnyView(AboutSettings())
     }
@@ -383,6 +387,131 @@ struct GeneralSettings: View {
       actions.report(error, "开机启动设置失败")
       launchAtLogin = SMAppService.mainApp.status == .enabled
     }
+  }
+}
+
+// MARK: - 手机
+
+struct PhoneSettings: View {
+  @Bindable var remote: RemoteAccess
+  @State private var enabled = UserDefaults.standard.bool(forKey: RemoteAccess.enabledKey)
+  @State private var confirmRevoke: RemoteDevice?
+
+  var body: some View {
+    Form {
+      Section {
+        SettingsRow(
+          title: "允许手机访问", detail: "已配对的手机可查看会话，并向 tmux 中的会话发消息",
+          icon: enabled && remote.status.running
+            ? ("checkmark.circle.fill", Theme.green) : ("iphone.slash", Theme.idle)
+        ) {
+          Toggle("允许手机访问", isOn: $enabled).labelsHidden()
+            .onChange(of: enabled) { _, on in
+              Task {
+                await remote.setEnabled(on)
+                enabled = remote.enabled
+              }
+            }
+        }
+        if let error = remote.error ?? remote.status.lastError {
+          Label(error, systemImage: "exclamationmark.triangle.fill")
+            .font(.caption).foregroundStyle(Theme.pink)
+        }
+        if remote.status.running {
+          SettingsRow(title: "当前连接", detail: connectedText) {
+            Text(remote.status.port.map { "端口 " + String($0) } ?? "启动中…")
+              .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+          }
+        }
+      } header: {
+        Text("手机访问")
+      } footer: {
+        Text("只接受局域网和 Tailscale 地址的连接，通信经 TLS 加密，证书指纹在配对时固定。不在 tmux 中的会话只能查看。")
+          .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      if remote.status.running {
+        Section {
+          pairingView
+        } header: {
+          Text("配对新手机")
+        } footer: {
+          Text("用 SessionMonitor 手机 App 扫描二维码。配对码 5 分钟内有效，只能使用一次。")
+            .font(.caption).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+      Section {
+        if remote.devices.isEmpty {
+          Text("还没有配对的设备").font(.callout).foregroundStyle(.secondary)
+        }
+        ForEach(remote.devices) { device in
+          SettingsRow(title: device.name, detail: deviceDetail(device), icon: ("iphone", Theme.blue)) {
+            Button("吊销") { confirmRevoke = device }.buttonStyle(.destructivePill)
+          }
+        }
+      } header: {
+        Text("已配对设备")
+      }
+    }
+    .settingsPage()
+    .onWindowFocus { remote.reloadDevices() }
+    .confirmationDialog(
+      "吊销「\(confirmRevoke?.name ?? "")」？", isPresented: .init(
+        get: { confirmRevoke != nil }, set: { if !$0 { confirmRevoke = nil } })
+    ) {
+      Button("吊销", role: .destructive) {
+        if let device = confirmRevoke { remote.revoke(device) }
+      }
+    } message: {
+      Text("该设备会立即断开，需要重新扫码配对才能再次连接。")
+    }
+  }
+
+  private var connectedText: String {
+    remote.status.connectedDevices.isEmpty
+      ? "没有手机在线" : "在线：" + remote.status.connectedDevices.joined(separator: "、")
+  }
+
+  @ViewBuilder private var pairingView: some View {
+    if let pairing = remote.pairing {
+      HStack(alignment: .center, spacing: 16) {
+        if let image = RemoteAccess.qrCode(for: pairing.url.absoluteString, size: 132) {
+          Image(nsImage: image).interpolation(.none).resizable().frame(width: 132, height: 132)
+            .padding(6).background(.white, in: RoundedRectangle(cornerRadius: Theme.radiusSmall))
+        }
+        VStack(alignment: .leading, spacing: 6) {
+          Text("配对码").font(.caption).foregroundStyle(.secondary)
+          Text(pairing.code).font(.system(.title3, design: .monospaced).weight(.semibold))
+            .textSelection(.enabled)
+          Text("地址").font(.caption).foregroundStyle(.secondary).padding(.top, 2)
+          Text(pairing.hosts.isEmpty ? "未找到局域网或 Tailscale 地址" : pairing.hosts.joined(separator: "\n"))
+            .font(.caption.monospaced()).textSelection(.enabled)
+          if let expires = remote.pairingExpires {
+            Text(expires, style: .relative).font(.caption).foregroundStyle(.secondary)
+              + Text(" 后过期").font(.caption).foregroundStyle(.secondary)
+          }
+          HStack(spacing: 8) {
+            Button("换一个") { remote.newPairingCode() }.buttonStyle(.glassPillCompact)
+            Button("复制链接") {
+              NSPasteboard.general.clearContents()
+              NSPasteboard.general.setString(pairing.url.absoluteString, forType: .string)
+            }.buttonStyle(.glassPillCompact)
+          }.padding(.top, 4)
+        }
+        Spacer(minLength: 0)
+      }
+      .padding(.vertical, 4)
+    } else {
+      Button("生成配对码") { remote.newPairingCode() }.buttonStyle(.primaryPill())
+    }
+  }
+
+  private func deviceDetail(_ device: RemoteDevice) -> String {
+    let formatter = RelativeDateTimeFormatter()
+    formatter.unitsStyle = .short
+    let seen = device.lastSeen.map { "最近连接 " + formatter.localizedString(for: $0, relativeTo: Date()) } ?? "从未连接"
+    return "配对于 \(device.pairedAt.formatted(date: .abbreviated, time: .shortened)) · \(seen)"
   }
 }
 

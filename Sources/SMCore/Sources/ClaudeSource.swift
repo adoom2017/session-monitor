@@ -39,30 +39,29 @@ public struct ClaudeSource: AgentSource {
   }
 
   public func enrich(_ session: Session) async throws -> SessionEnrichment? {
-    let path: URL
-    if let transcript = session.transcriptPath {
-      path = URL(fileURLWithPath: transcript)
-    } else {
-      let projects = home.appendingPathComponent(".claude/projects")
-      guard FileManager.default.fileExists(atPath: projects.path) else {
-        return SessionEnrichment.pendingTranscript(session.id)
-      }
-      let directories = try FileManager.default.contentsOfDirectory(
-        at: projects, includingPropertiesForKeys: [.isDirectoryKey]
-      ).sorted { $0.path < $1.path }
-      let candidates = directories.map {
-        $0.appendingPathComponent(session.currentSessionId + ".jsonl")
-      }.filter { FileManager.default.fileExists(atPath: $0.path) }
-      guard let candidate = candidates.first else {
-        return SessionEnrichment.pendingTranscript(session.id)
-      }
-      path = candidate
+    guard let path = try Self.transcript(of: session, home: home) else {
+      return SessionEnrichment.pendingTranscript(session.id)
     }
     do { return try TranscriptTailReader.read(path) } catch let error as CocoaError
       where error.code == .fileReadNoSuchFile
     {
       return SessionEnrichment.pendingTranscript(session.id)
     }
+  }
+
+  /// The session's transcript: from its hooks, else `~/.claude/projects/*/<session id>.jsonl`
+  /// (rows rebuilt from session files after a restart have no path yet). Nil if not written yet.
+  public static func transcript(
+    of session: Session, home: URL = FileManager.default.homeDirectoryForCurrentUser
+  ) throws -> URL? {
+    if let transcript = session.transcriptPath { return URL(fileURLWithPath: transcript) }
+    let projects = home.appendingPathComponent(".claude/projects")
+    guard FileManager.default.fileExists(atPath: projects.path) else { return nil }
+    let directories = try FileManager.default.contentsOfDirectory(
+      at: projects, includingPropertiesForKeys: [.isDirectoryKey]
+    ).sorted { $0.path < $1.path }
+    return directories.map { $0.appendingPathComponent(session.currentSessionId + ".jsonl") }
+      .first { FileManager.default.fileExists(atPath: $0.path) }
   }
 }
 

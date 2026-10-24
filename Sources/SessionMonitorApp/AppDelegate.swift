@@ -8,6 +8,7 @@ import SwiftUI
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
   let store = SessionStore()
   private var runtime: AppRuntime!
+  private var remote: RemoteAccess!
   private var panel: PanelController!
   private var status: NSStatusItem!
   private var notifications: NotificationManager!
@@ -19,6 +20,9 @@ import SwiftUI
   func applicationDidFinishLaunching(_ notification: Notification) {
     let home = FileManager.default.homeDirectoryForCurrentUser
     runtime = AppRuntime(store: store, directory: home.appendingPathComponent(".session-monitor"))
+    remote = RemoteAccess(store: store, directory: runtime.directory) { [weak self] text in
+      Task { await self?.runtime.writeLog(text) }
+    }
     panel = PanelController(
       store: store, jump: { [weak self] in self?.jump($0) },
       copy: { [weak self] in self?.copy($0) }, showLog: { [weak self] in self?.showLog() },
@@ -57,6 +61,7 @@ import SwiftUI
     }
     Task {
       await runtime.start()
+      await remote.resume()
       await notifications.requestAuthorization()
       if ProcessInfo.processInfo.environment["SM_TEST_NOTIFICATION"] == "1" {
         await notifications.sendTest()
@@ -66,6 +71,7 @@ import SwiftUI
 
   func applicationWillTerminate(_ notification: Notification) {
     runtime?.stop()
+    remote?.stop()
     if let hotKey { UnregisterEventHotKey(hotKey) }
     if let hotKeyHandler { RemoveEventHandler(hotKeyHandler) }
   }
@@ -184,7 +190,8 @@ import SwiftUI
           self.report(MonitorError.invalid("无法打开数据目录"), "打开数据目录失败")
         }
       },
-      report: { [weak self] error, context in self?.report(error, context) })
+      report: { [weak self] error, context in self?.report(error, context) },
+      remote: remote)
   }
 
   @objc private func showSettings() {
