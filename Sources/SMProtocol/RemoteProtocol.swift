@@ -68,16 +68,27 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
 }
 
 public struct TranscriptEntry: Codable, Sendable, Equatable, Identifiable {
-  public enum Role: String, Codable, Sendable { case user, assistant, tool }
+  public enum Role: String, Codable, Sendable {
+    case user, assistant
+    /// A tool call: `text` is a one-line summary, `detail` the full input.
+    case tool
+    /// What a tool returned (`text` first line, `detail` the output, truncated).
+    case toolResult
+    case thinking
+    /// Something that happened (interrupted…), not a message.
+    case event
+  }
   public var id: String
   public var role: Role
   public var text: String
+  public var detail: String?
   public var at: Date?
 
-  public init(id: String, role: Role, text: String, at: Date?) {
+  public init(id: String, role: Role, text: String, detail: String? = nil, at: Date?) {
     self.id = id
     self.role = role
     self.text = text
+    self.detail = detail
     self.at = at
   }
 }
@@ -141,6 +152,8 @@ public struct Hello: Codable, Sendable, Equatable {
 public enum ClientMessage: Codable, Sendable, Equatable {
   case hello(Hello)
   case subscribeTranscript(sessionId: String)
+  /// The page of entries before `beforeId` (scrolling back through history).
+  case loadOlderTranscript(sessionId: String, beforeId: String)
   case unsubscribeTranscript(sessionId: String)
   case subscribePane(sessionId: String)
   case unsubscribePane(sessionId: String)
@@ -164,8 +177,11 @@ public enum ServerMessage: Codable, Sendable, Equatable {
   case snapshot(sessions: [RemoteSession])
   case sessionUpdated(RemoteSession)
   case sessionRemoved(sessionId: String)
-  /// `reset`: replaces what the client holds for this session (first batch after subscribing).
-  case transcript(sessionId: String, entries: [TranscriptEntry], reset: Bool)
+  /// `reset`: replaces what the client holds for this session (first batch after subscribing),
+  /// otherwise appended. `hasOlder`: earlier entries can be loaded with loadOlderTranscript.
+  case transcript(sessionId: String, entries: [TranscriptEntry], reset: Bool, hasOlder: Bool)
+  /// A page to put before what the client holds.
+  case transcriptOlder(sessionId: String, entries: [TranscriptEntry], hasOlder: Bool)
   case pane(PaneSnapshot)
   case actionResult(requestId: String, status: ActionStatus, message: String?)
   case error(message: String)

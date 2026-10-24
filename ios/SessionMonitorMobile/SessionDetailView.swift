@@ -31,7 +31,12 @@ struct SessionDetailView: View {
         }
         Group {
           switch session.remoteInput ? tab : .conversation {
-          case .conversation: ConversationView(entries: model.transcripts[sessionID])
+          case .conversation:
+            ConversationView(
+              sessionID: sessionID, entries: model.transcripts[sessionID],
+              hasOlder: model.hasOlder.contains(sessionID),
+              live: session.state == .working ? pane.flatMap { LiveOutput.extract($0, agent: session.agent) } : nil,
+              loadOlder: { model.loadOlder(sessionID) })
           case .terminal: TerminalView(pane: pane)
           }
         }
@@ -173,67 +178,5 @@ struct FeedbackLine: View {
       Text(feedback.message).font(.caption).foregroundStyle(Theme.textSecondary).lineLimit(2)
       Spacer()
     }
-  }
-}
-
-struct ConversationView: View {
-  let entries: [TranscriptEntry]?
-
-  var body: some View {
-    if let entries {
-      if entries.isEmpty {
-        ContentUnavailableView("还没有对话", systemImage: "text.bubble", description: Text("会话的对话记录会显示在这里。"))
-      } else {
-        ScrollViewReader { proxy in
-          ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-              ForEach(entries) { EntryView(entry: $0).id($0.id) }
-            }
-            .padding(.horizontal, 14).padding(.vertical, 10)
-          }
-          .defaultScrollAnchor(.bottom)
-          .onChange(of: entries.last?.id) { _, last in
-            if let last { withAnimation { proxy.scrollTo(last, anchor: .bottom) } }
-          }
-        }
-      }
-    } else {
-      ProgressView("正在读取对话…").frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-  }
-}
-
-struct EntryView: View {
-  let entry: TranscriptEntry
-
-  var body: some View {
-    switch entry.role {
-    case .user:
-      HStack {
-        Spacer(minLength: 40)
-        Text(entry.text).font(.callout).foregroundStyle(.white)
-          .padding(.horizontal, 12).padding(.vertical, 8)
-          .background(RoundedRectangle(cornerRadius: 16).fill(Theme.blue))
-          .textSelection(.enabled)
-      }
-    case .assistant:
-      Text(Self.markdown(entry.text)).font(.callout)
-        .padding(.horizontal, 12).padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Theme.raised))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Theme.border))
-        .textSelection(.enabled)
-    case .tool:
-      Label(entry.text, systemImage: "terminal")
-        .font(.caption.monospaced()).foregroundStyle(Theme.textSecondary).lineLimit(3)
-        .padding(.horizontal, 4)
-    }
-  }
-
-  static func markdown(_ text: String) -> AttributedString {
-    (try? AttributedString(
-      markdown: text,
-      options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace, failurePolicy: .returnPartiallyParsedIfPossible)))
-      ?? AttributedString(text)
   }
 }

@@ -33,11 +33,22 @@ import SMProtocol
   static let helloTimeout: Duration = .seconds(10)
   static let confirmationWindow: TimeInterval = 5
 
+  /// A conversation feed for one session, with the thread it reads (a new thread needs a new
+  /// feed). Not `ready` while the history is still being parsed.
+  final class TranscriptSubscription {
+    let feed: TranscriptFeed?
+    let thread: String
+    var ready = false
+    init(feed: TranscriptFeed?, thread: String) {
+      self.feed = feed
+      self.thread = thread
+    }
+  }
+
   final class Client {
     let peer: RemotePeer
     var device: RemoteDevice?
-    /// Feed per public session id, with the thread it reads (a new thread needs a new feed).
-    var transcripts: [String: (feed: TranscriptFeed, thread: String)] = [:]
+    var transcripts: [String: TranscriptSubscription] = [:]
     var panes: [String: String] = [:]
     init(peer: RemotePeer) { self.peer = peer }
   }
@@ -72,7 +83,9 @@ import SMProtocol
       while !Task.isCancelled {
         guard let self else { return }
         publishSessions()
-        if tick % 2 == 0 { await refreshSubscriptions() }
+        // Panes twice a second, so streaming output looks live; transcripts once a second.
+        await refreshPanes()
+        if tick % 2 == 0 { await refreshTranscripts() }
         tick += 1
         try? await Task.sleep(for: .milliseconds(500))
       }
@@ -216,26 +229,37 @@ import SMProtocol
 
   // MARK: Subscriptions
 
-  static let transcriptLimit = 50
+  /// Entries per transcript batch (first screen, and each page further back).
+  static let pageSize = 100
 
-  private func refreshSubscriptions() async {
+  private func refreshTranscripts() async {
     for client in authenticated {
-      for (id, subscription) in client.transcripts {
+      for (id, subscription) in client.transcripts where subscription.ready {
         // /clear or /new started another thread: start over from its transcript.
         if let session = session(publicID: id), session.currentSessionId != subscription.thread {
           openTranscript(id, for: client)
           continue
         }
+        guard let feed = subscription.feed else { continue }
         do {
-          let (entries, reset) = try subscription.feed.poll(limit: Self.transcriptLimit)
-          if !entries.isEmpty || reset {
-            client.peer.send(.transcript(sessionId: id, entries: entries, reset: reset))
+          let (entries, reset) = try await Task.detached(priority: .utility) { try feed.poll() }.value
+          guard client.transcripts[id] === subscription else { continue }
+          if reset {
+            let latest = feed.latest(Self.pageSize)
+            client.peer.send(.transcript(sessionId: id, entries: latest.entries, reset: true, hasOlder: latest.hasOlder))
+          } else if !entries.isEmpty {
+            client.peer.send(.transcript(sessionId: id, entries: entries, reset: false, hasOlder: false))
           }
         } catch {
           client.transcripts.removeValue(forKey: id)
           client.peer.send(.error(message: "对话读取失败：\(error.localizedDescription)"))
         }
       }
+    }
+  }
+
+  private func refreshPanes() async {
+    for client in authenticated {
       for (id, previous) in client.panes {
         guard let session = session(publicID: id) else { continue }
         guard let screen = try? await TmuxRemote.screen(session) else { continue }
@@ -253,28 +277,39 @@ import SMProtocol
       menu: PaneMenuParser.parse(screen.plain), columns: screen.columns, styled: true)
   }
 
-  /// Starts (or restarts) a conversation feed and sends its recent entries as a reset batch.
+  /// Starts (or restarts) a conversation feed: parses the history off the main actor, then sends
+  /// the newest page as a reset batch.
   private func openTranscript(_ id: String, for client: Client) {
     let peer = client.peer
     guard let session = session(publicID: id) else { return peer.send(.error(message: "会话不存在")) }
     let located = session.kind == .claude
       ? try? ClaudeSource.transcript(of: session)
       : session.transcriptPath.map { URL(fileURLWithPath: $0) }
-    guard let url = located else {
+    // A new session's hooks name the transcript before its first prompt creates the file.
+    guard let url = located, FileManager.default.fileExists(atPath: url.path) else {
       // Not written yet; keep the subscription so the thread check retries (announced once).
-      let announced = client.transcripts[id]?.thread == ""
-      client.transcripts[id] = (TranscriptFeed(url: URL(fileURLWithPath: "/dev/null"), kind: session.kind), "")
-      if !announced { peer.send(.transcript(sessionId: id, entries: [], reset: true)) }
+      let announced = client.transcripts[id].map { $0.feed == nil } ?? false
+      let waiting = TranscriptSubscription(feed: nil, thread: "")
+      waiting.ready = true
+      client.transcripts[id] = waiting
+      if !announced { peer.send(.transcript(sessionId: id, entries: [], reset: true, hasOlder: false)) }
       return
     }
     let feed = TranscriptFeed(url: url, kind: session.kind)
-    do {
-      let entries = try feed.initial(limit: Self.transcriptLimit)
-      client.transcripts[id] = (feed, session.currentSessionId)
-      peer.send(.transcript(sessionId: id, entries: entries, reset: true))
-    } catch {
-      client.transcripts.removeValue(forKey: id)
-      peer.send(.error(message: "对话读取失败：\(error.localizedDescription)"))
+    let subscription = TranscriptSubscription(feed: feed, thread: session.currentSessionId)
+    client.transcripts[id] = subscription
+    Task { [weak self] in
+      do {
+        try await Task.detached(priority: .userInitiated) { try feed.load() }.value
+      } catch {
+        if client.transcripts[id] === subscription { client.transcripts.removeValue(forKey: id) }
+        return peer.send(.error(message: "对话读取失败：\(error.localizedDescription)"))
+      }
+      // Superseded by a newer subscription (thread change, resubscribe) while parsing.
+      guard self != nil, client.transcripts[id] === subscription else { return }
+      subscription.ready = true
+      let latest = feed.latest(Self.pageSize)
+      peer.send(.transcript(sessionId: id, entries: latest.entries, reset: true, hasOlder: latest.hasOlder))
     }
   }
 
@@ -286,6 +321,10 @@ import SMProtocol
     case .hello: break
     case .subscribeTranscript(let id):
       openTranscript(id, for: client)
+    case .loadOlderTranscript(let id, let beforeId):
+      guard let feed = client.transcripts[id]?.feed else { return }
+      let page = feed.page(before: beforeId, count: Self.pageSize)
+      peer.send(.transcriptOlder(sessionId: id, entries: page.entries, hasOlder: page.hasOlder))
     case .unsubscribeTranscript(let id):
       client.transcripts.removeValue(forKey: id)
     case .subscribePane(let id):

@@ -25,6 +25,9 @@ import UIKit
   private(set) var connection: Connection = .idle
   private(set) var sessions: [String: RemoteSession] = [:]
   private(set) var transcripts: [String: [TranscriptEntry]] = [:]
+  /// Sessions whose history goes further back than what is loaded.
+  private(set) var hasOlder: Set<String> = []
+  @ObservationIgnored private var loadingOlder: Set<String> = []
   private(set) var panes: [String: PaneSnapshot] = [:]
   /// Latest action result per session, shown under the input bar.
   private(set) var feedback: [String: Feedback] = [:]
@@ -167,15 +170,21 @@ import UIKit
       sessions[session.id] = session
     case .sessionRemoved(let id):
       sessions.removeValue(forKey: id)
-    case .transcript(let id, let entries, let reset):
+    case .transcript(let id, let entries, let reset, let older):
       if reset {
         transcripts[id] = entries
+        if older { hasOlder.insert(id) } else { hasOlder.remove(id) }
       } else {
         var list = transcripts[id] ?? []
         let known = Set(list.map(\.id))
         list += entries.filter { !known.contains($0.id) }
-        transcripts[id] = Array(list.suffix(300))
+        transcripts[id] = list
       }
+    case .transcriptOlder(let id, let entries, let older):
+      loadingOlder.remove(id)
+      let known = Set((transcripts[id] ?? []).map(\.id))
+      transcripts[id] = entries.filter { !known.contains($0.id) } + (transcripts[id] ?? [])
+      if older { hasOlder.insert(id) } else { hasOlder.remove(id) }
     case .pane(let pane):
       panes[pane.sessionId] = pane
     case .actionResult(let requestId, let status, let message):
@@ -205,6 +214,13 @@ import UIKit
       if wantsPane { try? await link?.send(.subscribePane(sessionId: id)) }
       if sessions[id]?.unread == true { try? await link?.send(.markRead(sessionId: id)) }
     }
+  }
+
+  /// The page before the oldest loaded entry.
+  func loadOlder(_ id: String) {
+    guard hasOlder.contains(id), !loadingOlder.contains(id), let first = transcripts[id]?.first else { return }
+    loadingOlder.insert(id)
+    Task { try? await link?.send(.loadOlderTranscript(sessionId: id, beforeId: first.id)) }
   }
 
   func close(_ id: String) {

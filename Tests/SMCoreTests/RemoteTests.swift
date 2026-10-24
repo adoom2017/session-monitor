@@ -146,7 +146,6 @@ import Testing
       #"{"type":"user","isSidechain":true,"message":{"content":"sub"}}"#,
       #"{"type":"user","isMeta":true,"message":{"content":"meta"}}"#,
       #"{"type":"user","message":{"content":"<command-name>/clear</command-name>"}}"#,
-      #"{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#,
     ] {
       #expect(TranscriptParser.entries(line(skipped), kind: .claude, offset: 0).isEmpty)
     }
@@ -161,32 +160,52 @@ import Testing
     let command = TranscriptParser.entries(
       line(#"{"type":"event_msg","payload":{"type":"item_completed","item":{"type":"CommandExecution","id":"e1","command":["/bin/zsh","-lc","git status"],"exit_code":1}}}"#),
       kind: .codex, offset: 0)
-    #expect(command.first?.text == "Bash: git status（退出码 1）")
+    #expect(command.map(\.role) == [.tool, .toolResult])
+    #expect(command.first?.text == "Bash: git status" && command.last?.text.hasPrefix("退出码 1") == true)
+    // Tool results and thinking are part of the full history.
+    let result = TranscriptParser.entries(
+      line(#"{"type":"user","uuid":"r1","message":{"content":[{"type":"tool_result","tool_use_id":"t","content":"line 1\nline 2"}]}}"#),
+      kind: .claude, offset: 0)
+    #expect(result.first?.role == .toolResult && result.first?.text == "line 1" && result.first?.detail == "line 1\nline 2")
+    let thinking = TranscriptParser.entries(
+      line(#"{"type":"assistant","uuid":"a2","message":{"content":[{"type":"thinking","thinking":"先看日志"}]}}"#),
+      kind: .claude, offset: 0)
+    #expect(thinking.first?.role == .thinking)
+    let interrupted = TranscriptParser.entries(
+      line(#"{"type":"user","uuid":"i1","message":{"content":[{"type":"text","text":"[Request interrupted by user]"}]}}"#),
+      kind: .claude, offset: 0)
+    #expect(interrupted == [TranscriptEntry(id: "i1", role: .event, text: "已中断", at: nil)])
   }
 
-  @Test func transcriptFeedReadsIncrementally() throws {
+  @Test func transcriptFeedPagesHistoryAndFollowsTheFile() throws {
     let dir = try tempDirectory()
     defer { try? FileManager.default.removeItem(at: dir) }
     let url = dir.appendingPathComponent("t.jsonl")
     func message(_ n: Int) -> String {
       #"{"type":"user","uuid":"u\#(n)","message":{"content":"消息 \#(n)"}}"# + "\n"
     }
-    try (1...60).map(message).joined().write(to: url, atomically: true, encoding: .utf8)
+    try (1...250).map(message).joined().write(to: url, atomically: true, encoding: .utf8)
     let feed = TranscriptFeed(url: url, kind: .claude)
-    let first = try feed.initial(limit: 50)
-    #expect(first.count == 50 && first.first?.text == "消息 11" && first.last?.text == "消息 60")
-    #expect(try feed.poll(limit: 50).entries.isEmpty)
+    try feed.load()
+    let first = feed.latest(100)
+    #expect(first.entries.count == 100 && first.entries.first?.text == "消息 151" && first.hasOlder)
+    let older = feed.page(before: "u151", count: 100)
+    #expect(older.entries.first?.text == "消息 51" && older.entries.last?.text == "消息 150" && older.hasOlder)
+    let oldest = feed.page(before: "u51", count: 100)
+    #expect(oldest.entries.count == 50 && !oldest.hasOlder)
+    #expect(try feed.poll().entries.isEmpty)
     let handle = try FileHandle(forWritingTo: url)
     try handle.seekToEnd()
     // A half-written line is held back until it is complete.
-    try handle.write(contentsOf: Data((message(61) + #"{"type":"user","uuid":"u62","#).utf8))
-    #expect(try feed.poll(limit: 50).entries.map(\.text) == ["消息 61"])
-    try handle.write(contentsOf: Data(#""message":{"content":"消息 62"}}"#.utf8 + [10]))
+    try handle.write(contentsOf: Data((message(251) + #"{"type":"user","uuid":"u252","#).utf8))
+    #expect(try feed.poll().entries.map(\.text) == ["消息 251"])
+    try handle.write(contentsOf: Data(#""message":{"content":"消息 252"}}"#.utf8 + [10]))
     try handle.close()
-    #expect(try feed.poll(limit: 50).entries.map(\.text) == ["消息 62"])
+    #expect(try feed.poll().entries.map(\.text) == ["消息 252"])
+    #expect(feed.latest(1).entries.first?.text == "消息 252")
     try message(1).write(to: url, atomically: true, encoding: .utf8)
-    let replaced = try feed.poll(limit: 50)
-    #expect(replaced.reset && replaced.entries.map(\.text) == ["消息 1"])
+    let replaced = try feed.poll()
+    #expect(replaced.reset && feed.latest(100).entries.map(\.text) == ["消息 1"])
   }
 
   @Test func sessionDTOHidesProcessDetails() {
@@ -268,5 +287,48 @@ import Testing
     }
     #expect(audit.contains { $0.contains("已配对设备「Test Phone」") })
     #expect(audit.contains { $0.contains("被拒绝") })
+  }
+}
+
+extension RemoteTests {
+  /// Real case (R4, 2026-10-24): a new session's hooks name its transcript before the first
+  /// prompt creates it. Subscribing then must wait for the file, not fail for good.
+  @MainActor @Test func transcriptSubscriptionWaitsForTheFile() async throws {
+    let dir = try tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let transcript = dir.appendingPathComponent("s1.jsonl")
+    let store = SessionStore()
+    try store.apply(
+      AgentEvent(
+        sessionId: "s1", agentPid: 4242, cwd: "/work/demo", transcriptPath: transcript.path, at: Date(),
+        type: .sessionStart(reason: nil)))
+    let hub = try RemoteHub(store: store, directory: dir) { _ in }
+    try await hub.start(serverName: "Test Mac", port: 0, advertise: false)
+    defer { hub.stop() }
+    for _ in 0..<50 where hub.status.port == nil { try await Task.sleep(for: .milliseconds(100)) }
+    let port = try #require(hub.status.port)
+    let payload = try #require(hub.pairingPayload())
+    let (connection, _) = try await RemoteConnection.connect(
+      hosts: ["127.0.0.1"], port: port, fingerprint: payload.fingerprint,
+      hello: Hello(deviceName: "Test", token: nil, pairingCode: payload.code))
+    defer { connection.close() }
+    var messages = connection.messages.makeAsyncIterator()
+    guard case .snapshot(let sessions)? = try await messages.next(), let id = sessions.first?.id else {
+      Issue.record("no snapshot"); return
+    }
+    try await connection.send(.subscribeTranscript(sessionId: id))
+    guard case .transcript(_, let empty, true, _)? = try await messages.next() else {
+      Issue.record("no empty transcript"); return
+    }
+    #expect(empty.isEmpty)
+    try (#"{"type":"user","uuid":"u1","message":{"content":"第一条"}}"# + "\n")
+      .write(to: transcript, atomically: true, encoding: .utf8)
+    while let message = try await messages.next() {
+      if case .transcript(_, let entries, true, _) = message, !entries.isEmpty {
+        #expect(entries.map(\.text) == ["第一条"])
+        return
+      }
+      if case .error(let text) = message { Issue.record("error: \(text)"); return }
+    }
   }
 }

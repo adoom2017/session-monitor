@@ -55,10 +55,12 @@ func describe(_ message: ServerMessage) -> String {
   case .snapshot(let sessions): return "snapshot\n" + sessions.map { "  " + describe($0) }.joined(separator: "\n")
   case .sessionUpdated(let s): return "updated  " + describe(s)
   case .sessionRemoved(let id): return "removed  \(id)"
-  case .transcript(let id, let entries, let reset):
-    return "transcript \(id) reset=\(reset)\n"
+  case .transcript(let id, let entries, let reset, let hasOlder):
+    return "transcript \(id) reset=\(reset) older=\(hasOlder)\n"
       + entries.map { "  [\($0.role.rawValue)] \($0.text.replacingOccurrences(of: "\n", with: "\n      "))" }
       .joined(separator: "\n")
+  case .transcriptOlder(let id, let entries, let hasOlder):
+    return "older \(id) \(entries.count) entries, more=\(hasOlder)"
   case .pane(let pane):
     let menu = pane.menu.map { "  \($0.selected ? "›" : " ") \($0.number). \($0.label)" }.joined(separator: "\n")
     return "pane \(pane.sessionId)\n\(pane.text)\n--- menu (\(pane.menu.count))\n\(menu)"

@@ -42,7 +42,7 @@ struct TerminalView: View {
   private func reading(_ pane: PaneSnapshot) -> some View {
     ScrollView {
       LazyVStack(alignment: .leading, spacing: 2) {
-        ForEach(Array(Self.readingLines(pane.text).enumerated()), id: \.offset) { _, line in
+        ForEach(Array(Self.readingLines(pane.text, columns: pane.columns).enumerated()), id: \.offset) { _, line in
           switch line {
           case .rule:
             Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1).padding(.vertical, 4)
@@ -83,9 +83,9 @@ struct TerminalView: View {
   enum Line: Equatable { case text(String), rule, blank }
 
   /// Lines for reading mode: rule lines become dividers, blank runs collapse, leading blanks go.
-  static func readingLines(_ text: String) -> [Line] {
+  static func readingLines(_ text: String, columns: Int?) -> [Line] {
     var lines: [Line] = []
-    for raw in text.components(separatedBy: "\n") {
+    for raw in PaneText.unwrap(text.components(separatedBy: "\n"), columns: columns) {
       let plain = ANSIRenderer.strip(raw).trimmingCharacters(in: .whitespaces)
       let line: Line
       if plain.isEmpty {
@@ -249,3 +249,43 @@ enum ANSIRenderer {
     }
   }
 }
+
+/// Undoes the line breaks a TUI inserts at the terminal width (Claude Code wraps its own output
+/// and indents the continuation), so text reflows on the phone.
+enum PaneText {
+  /// Display columns of a line (wide East Asian characters and emoji take two).
+  static func width(_ line: String) -> Int {
+    line.unicodeScalars.reduce(0) { total, scalar in
+      let v = scalar.value
+      let wide =
+        (0x1100...0x115F).contains(v) || (0x2E80...0xA4CF).contains(v) || (0xAC00...0xD7A3).contains(v)
+        || (0xF900...0xFAFF).contains(v) || (0xFE30...0xFE4F).contains(v) || (0xFF00...0xFF60).contains(v)
+        || (0xFFE0...0xFFE6).contains(v) || (0x1F300...0x1FAFF).contains(v) || (0x20000...0x3FFFD).contains(v)
+      return total + (wide ? 2 : 1)
+    }
+  }
+
+  /// Joins each line that continues one filling the pane width. Styled lines keep their
+  /// escapes; a joined continuation is added as plain text.
+  static func unwrap(_ styled: [String], columns: Int?) -> [String] {
+    guard let columns, columns > 20 else { return styled }
+    var result: [String] = []
+    var previousFull = false
+    for line in styled {
+      let plain = ANSIRenderer.strip(line)
+      let trimmed = plain.trimmingCharacters(in: .whitespaces)
+      let continues = previousFull && !trimmed.isEmpty && plain.hasPrefix(" ")
+        && !trimmed.allSatisfy({ "─━═".contains($0) })
+      if continues, let last = result.popLast() {
+        result.append(last + "\u{1B}[0m" + trimmed)
+      } else {
+        result.append(line)
+      }
+      // Claude Code wraps a few columns short of the edge (its margin, plus a wide character
+      // that does not fit leaves the last column empty).
+      previousFull = width(plain.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)) >= columns - 6
+    }
+    return result
+  }
+}
+

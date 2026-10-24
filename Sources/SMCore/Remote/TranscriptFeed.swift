@@ -1,49 +1,77 @@
 import Foundation
 import SMProtocol
 
-/// Conversation entries from a Claude transcript or Codex rollout, read incrementally
-/// (DEV_SPEC §17.6). Not thread-safe: one feed per subscription, used from one task.
-public final class TranscriptFeed {
+/// Conversation entries from a Claude transcript or Codex rollout (DEV_SPEC §17.6): the whole
+/// history is parsed once, then the file is followed incrementally. Thread-safe; parse it off the
+/// main actor (transcripts reach tens of MB).
+public final class TranscriptFeed: @unchecked Sendable {
   public let url: URL
   let kind: AgentKind
+  private let lock = NSLock()
   private var offset: UInt64 = 0
-  static let tailBytes: UInt64 = 1_048_576
+  private var all: [TranscriptEntry] = []
+  /// Files beyond this are read from their tail only.
+  static let maxBytes: UInt64 = 64 * 1_048_576
 
   public init(url: URL, kind: AgentKind) {
     self.url = url
     self.kind = kind
   }
 
-  /// The last `limit` entries; remembers where the file ended.
-  public func initial(limit: Int) throws -> [TranscriptEntry] {
+  /// Parses the whole history (or the last 64 MB of it).
+  public func load() throws {
     let handle = try FileHandle(forReadingFrom: url)
     defer { try? handle.close() }
     let size = try handle.seekToEnd()
-    let start = size > Self.tailBytes ? size - Self.tailBytes : 0
+    let start = size > Self.maxBytes ? size - Self.maxBytes : 0
     try handle.seek(toOffset: start)
     let data = try handle.readToEnd() ?? Data()
-    let entries = parse(data, base: start, dropFirst: start > 0)
-    return Array(entries.suffix(limit))
+    let (entries, end) = Self.parse(data, base: start, dropFirst: start > 0, kind: kind)
+    lock.withLock {
+      all = entries
+      offset = end
+    }
   }
 
-  /// Entries appended since the last read. `reset` when the file shrank (replaced): the caller
-  /// should discard what it holds and use `entries` (a fresh tail).
-  public func poll(limit: Int) throws -> (entries: [TranscriptEntry], reset: Bool) {
+  /// The newest `count` entries, and whether older ones exist.
+  public func latest(_ count: Int) -> (entries: [TranscriptEntry], hasOlder: Bool) {
+    lock.withLock { (Array(all.suffix(count)), all.count > count) }
+  }
+
+  /// Up to `count` entries before the entry `id`.
+  public func page(before id: String, count: Int) -> (entries: [TranscriptEntry], hasOlder: Bool) {
+    lock.withLock {
+      guard let index = all.firstIndex(where: { $0.id == id }) else { return ([], false) }
+      let start = max(0, index - count)
+      return (Array(all[start..<index]), start > 0)
+    }
+  }
+
+  /// Entries appended since the last read. `reset` when the file shrank (replaced): the history
+  /// was reloaded and the caller should start over from `latest`.
+  public func poll() throws -> (entries: [TranscriptEntry], reset: Bool) {
     let handle = try FileHandle(forReadingFrom: url)
     defer { try? handle.close() }
     let size = try handle.seekToEnd()
-    if size < offset {
+    let known = lock.withLock { offset }
+    if size < known {
       try? handle.close()
-      return (try initial(limit: limit), true)
+      try load()
+      return ([], true)
     }
-    guard size > offset else { return ([], false) }
-    try handle.seek(toOffset: offset)
+    guard size > known else { return ([], false) }
+    try handle.seek(toOffset: known)
     let data = try handle.readToEnd() ?? Data()
-    return (parse(data, base: offset, dropFirst: false), false)
+    let (entries, end) = Self.parse(data, base: known, dropFirst: false, kind: kind)
+    lock.withLock {
+      all += entries
+      offset = end
+    }
+    return (entries, false)
   }
 
-  /// Parses complete lines only; `offset` advances past the last complete line.
-  private func parse(_ data: Data, base: UInt64, dropFirst: Bool) -> [TranscriptEntry] {
+  /// Complete lines only; returns where the last complete line ended.
+  static func parse(_ data: Data, base: UInt64, dropFirst: Bool, kind: AgentKind) -> ([TranscriptEntry], UInt64) {
     var entries: [TranscriptEntry] = []
     var lineStart = data.startIndex
     var first = true
@@ -56,8 +84,7 @@ public final class TranscriptFeed {
       first = false
       lineStart = newline + 1
     }
-    offset = base + UInt64(lineStart - data.startIndex)
-    return entries
+    return (entries, base + UInt64(lineStart - data.startIndex))
   }
 }
 
@@ -78,8 +105,15 @@ public enum TranscriptParser {
     }
   }
 
-  /// Main-thread user text, assistant text and tool calls; sub-agent (sidechain) and meta lines
-  /// and tool results are left out.
+  /// Tool output kept per entry; the rest is cut (the phone shows it on demand).
+  static let detailLimit = 6000
+
+  static func clipped(_ text: String) -> String {
+    text.count <= detailLimit ? text : String(text.prefix(detailLimit)) + "\n…（已截断）"
+  }
+
+  /// Main-thread messages, thinking, tool calls with their input, and tool results; sub-agent
+  /// (sidechain) and meta lines are left out.
   static func claude(_ json: JSONValue, at: Date?, offset: UInt64) -> [TranscriptEntry] {
     guard let type = json["type"]?.string, type == "user" || type == "assistant",
       json["isSidechain"]?.bool != true, json["isMeta"]?.bool != true,
@@ -90,7 +124,7 @@ public enum TranscriptParser {
     if type == "user", let text = content.string ?? content.array?.first?["text"]?.string,
       text.hasPrefix("[Request interrupted")
     {
-      return [TranscriptEntry(id: base, role: .tool, text: "已中断", at: at)]
+      return [TranscriptEntry(id: base, role: .event, text: "已中断", at: at)]
     }
     if let text = content.string {
       return type == "user" && isConversational(text)
@@ -105,15 +139,43 @@ public enum TranscriptParser {
         guard let text = item["text"]?.string, !text.isEmpty else { continue }
         if type == "user" && !isConversational(text) { continue }
         result.append(TranscriptEntry(id: id, role: type == "user" ? .user : .assistant, text: text, at: at))
+      case "thinking":
+        guard let text = item["thinking"]?.string, !text.isEmpty else { continue }
+        result.append(TranscriptEntry(id: id, role: .thinking, text: text, at: at))
       case "tool_use":
         let name = item["name"]?.string ?? "tool"
         let summary = toolSummary(item["input"])
         result.append(
-          TranscriptEntry(id: id, role: .tool, text: summary.map { "\(name): \($0)" } ?? name, at: at))
+          TranscriptEntry(
+            id: id, role: .tool, text: summary.map { "\(name): \($0)" } ?? name,
+            detail: item["input"].map { clipped(pretty($0)) }, at: at))
+      case "tool_result":
+        let output = toolResultText(item["content"])
+        let failed = item["is_error"]?.bool == true
+        result.append(
+          TranscriptEntry(
+            id: id, role: .toolResult,
+            text: (failed ? "失败：" : "") + (output.split(separator: "\n").first.map(String.init) ?? "（无输出）"),
+            detail: output.isEmpty ? nil : clipped(output), at: at))
       default: continue
       }
     }
     return result
+  }
+
+  static func toolResultText(_ value: JSONValue?) -> String {
+    if let text = value?.string { return text }
+    guard case .array(let parts)? = value else { return "" }
+    return parts.compactMap { part in
+      part["text"]?.string ?? (part["type"]?.string == "image" ? "[图片]" : nil)
+    }.joined(separator: "\n")
+  }
+
+  static func pretty(_ value: JSONValue) -> String {
+    if let text = value.string { return text }
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+    return (try? encoder.encode(value)).map { String(decoding: $0, as: UTF8.self) } ?? ""
   }
 
   /// Codex 0.16x writes each finished item as `event_msg` / `item_completed`.
@@ -133,10 +195,24 @@ public enum TranscriptParser {
     case "AgentMessage":
       let value = text(item["content"])
       return value.isEmpty ? [] : [TranscriptEntry(id: id, role: .assistant, text: value, at: at)]
+    case "Reasoning":
+      let value = (item["summary_text"]?.array ?? []).compactMap(\.string).joined(separator: "\n\n")
+      return value.isEmpty ? [] : [TranscriptEntry(id: id, role: .thinking, text: value, at: at)]
     case "CommandExecution":
       guard case .array(let parts)? = item["command"], let script = parts.last?.string else { return [] }
-      let exit = item["exit_code"]?.number.map { $0 == 0 ? "" : "（退出码 \(Int($0))）" } ?? ""
-      return [TranscriptEntry(id: id, role: .tool, text: "Bash: " + singleLine(script, limit: 200) + exit, at: at)]
+      let code = item["exit_code"]?.number.map(Int.init)
+      let output = item["aggregated_output"]?.string ?? ""
+      var entries = [
+        TranscriptEntry(
+          id: id, role: .tool, text: "Bash: " + singleLine(script, limit: 200), detail: clipped(script), at: at)
+      ]
+      let status = code.map { $0 == 0 ? "" : "退出码 \($0)：" } ?? ""
+      entries.append(
+        TranscriptEntry(
+          id: id + "-out", role: .toolResult,
+          text: status + (output.split(separator: "\n").first.map(String.init) ?? "（无输出）"),
+          detail: output.isEmpty ? nil : clipped(output), at: at))
+      return entries
     default: return []
     }
   }
