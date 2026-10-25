@@ -17,6 +17,7 @@
 		374BE9C87BBF84FC502E7593 /* RemoteFlowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */; };
 		41F3505902A1F00463783D2F /* MarkdownView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B67EB05DE067D6642FA1D650 /* MarkdownView.swift */; };
 		763D4E1C62B3762C0E33B83C /* SMProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 9C391C7EEFAB2E4FF9B26ABB /* SMProtocol */; };
+		9AD8DC58757A6902266636B1 /* ThinkingShotsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0ED02C19665B80AADCCD02 /* ThinkingShotsUITests.swift */; };
 		9C50858006A977DB0689D1E7 /* ServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9EF7DBF6D7B5DEC54E1428 /* ServerStore.swift */; };
 		A4033B3151265EB514876364 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 789E054B6E48970D87D7A78A /* TerminalView.swift */; };
 		AA0B5DA1EC355AD755F573F7 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EA9E9D4398897BF79B6A22 /* PairingView.swift */; };
@@ -48,6 +49,7 @@
 		4EB1A241957CD50A096F0CE2 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		560EBEA5E202D7BB57CB352A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6B0159E64D251A8909F2D1AB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		6B0ED02C19665B80AADCCD02 /* ThinkingShotsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingShotsUITests.swift; sourceTree = "<group>"; };
 		6BA4A164D334B904756F636D /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		789E054B6E48970D87D7A78A /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFlowUITests.swift; sourceTree = "<group>"; };
@@ -103,6 +105,7 @@
 				F6F982E47F4F4E6B6E75AF5A /* KeyboardUITests.swift */,
 				FF3CDB6E0749F0940CE97D87 /* PullUITests.swift */,
 				7BC45BA616420D7A5BCD28F1 /* RemoteFlowUITests.swift */,
+				6B0ED02C19665B80AADCCD02 /* ThinkingShotsUITests.swift */,
 			);
 			path = SessionMonitorMobileUITests;
 			sourceTree = "<group>";
@@ -240,6 +243,7 @@
 				1C98C5D873C2C126DC0CE050 /* KeyboardUITests.swift in Sources */,
 				2E6DDC892748F5B0F1CF005B /* PullUITests.swift in Sources */,
 				374BE9C87BBF84FC502E7593 /* RemoteFlowUITests.swift in Sources */,
+				9AD8DC58757A6902266636B1 /* ThinkingShotsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

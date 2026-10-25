@@ -62,7 +62,13 @@ struct ConversationView: View {
 
 struct EntryView: View {
   let entry: TranscriptEntry
-  @State private var expanded = false
+  /// Thinking starts open (it is read, not skimmed); tool input and output start collapsed.
+  @State private var expanded: Bool
+
+  init(entry: TranscriptEntry) {
+    self.entry = entry
+    _expanded = State(initialValue: entry.role == .thinking)
+  }
 
   var body: some View {
     switch entry.role {
@@ -119,14 +125,26 @@ struct EntryView: View {
       }
       .buttonStyle(.plain)
       if expanded, let full {
-        ScrollView(.horizontal) {
-          Text(full)
-            .font(monospaced ? .system(size: 11, design: .monospaced) : .caption)
-            .foregroundStyle(.primary.opacity(0.85))
-            .fixedSize(horizontal: monospaced, vertical: false)
-            .padding(10)
-            .textSelection(.enabled)
+        Group {
+          if monospaced {
+            // Commands and output keep their lines; scroll sideways for long ones.
+            ScrollView(.horizontal) {
+              Text(full)
+                .font(.system(size: 11, design: .monospaced))
+                .fixedSize(horizontal: true, vertical: false)
+                .padding(10)
+            }
+          } else {
+            // Prose (thinking) wraps to the screen width, with inline Markdown (code, bold).
+            // Thinking often ends with blank lines, which left an empty band in the box.
+            MarkdownView.inline(full.trimmingCharacters(in: .whitespacesAndNewlines))
+              .font(.caption)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .padding(10)
+          }
         }
+        .foregroundStyle(.primary.opacity(0.85))
+        .textSelection(.enabled)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.fill))
       }
