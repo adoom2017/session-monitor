@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 app="${1:?usage: make-dmg.sh <app> <output.dmg>}"
 dmg="${2:?usage: make-dmg.sh <app> <output.dmg>}"
-volname="SessionMonitor"
+volname="Codewhistle"
 app_name="$(basename "$app")"
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/sm-dmg.XXXXXX")"

@@ -17,7 +17,7 @@ struct PairingView: View {
           .font(.system(size: 56, weight: .light)).foregroundStyle(Theme.blue)
         VStack(spacing: 8) {
           Text("连接你的 Mac").font(.title2.weight(.semibold))
-          Text("在 Mac 上打开 SessionMonitor → 设置 → 手机，开启\"允许手机访问\"，然后扫描显示的二维码。")
+          Text("在 Mac 上打开\(AppInfo.name) → 设置 → 手机，开启\"允许手机访问\"，然后扫描显示的二维码。")
             .font(.callout).foregroundStyle(Theme.textSecondary).multilineTextAlignment(.center)
         }
         .padding(.horizontal, 28)

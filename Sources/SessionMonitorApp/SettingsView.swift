@@ -13,6 +13,11 @@ enum AppInfo {
   }
   /// e.g. "1.1.0 (202610200526)"
   static var version: String { "\(shortVersion) (\(build))" }
+  /// The product name in the system language: 码哨 (Chinese) or Codewhistle.
+  static var name: String {
+    Bundle.main.localizedInfoDictionary?["CFBundleDisplayName"] as? String
+      ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Codewhistle"
+  }
 }
 
 /// What the settings window can ask the app to do.
@@ -140,7 +145,7 @@ struct IntegrationSettings: View {
       } footer: {
         Text(
           hookMessage
-            ?? "安装会在配置中加入 SessionMonitor 的 hook，保留你已有的其他 hook；修改前自动备份到 ~/.session-monitor/backups。"
+            ?? "安装会在配置中加入 \(AppInfo.name) 的 hook，保留你已有的其他 hook；修改前自动备份到 ~/.session-monitor/backups。"
         )
         .font(.caption).foregroundStyle(.secondary)
         .multilineTextAlignment(.leading)
@@ -171,7 +176,7 @@ struct IntegrationSettings: View {
         if let agent = confirmUninstall { run(agent, install: false) }
       }
     } message: {
-      Text("只移除 SessionMonitor 自己的条目，其他 hook 不受影响。卸载后该工具的会话只能显示忙/闲。")
+      Text("只移除 \(AppInfo.name) 自己的条目，其他 hook 不受影响。卸载后该工具的会话只能显示忙/闲。")
     }
   }
 
@@ -436,7 +441,7 @@ struct PhoneSettings: View {
         } header: {
           Text("配对新手机")
         } footer: {
-          Text("用 SessionMonitor 手机 App 扫描二维码。配对码 5 分钟内有效，只能使用一次。")
+          Text("用\(AppInfo.name)手机 App 扫描二维码。配对码 5 分钟内有效，只能使用一次。")
             .font(.caption).foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -521,7 +526,7 @@ struct AboutSettings: View {
   var body: some View {
     VStack(spacing: 10) {
       Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 96, height: 96)
-      Text("SessionMonitor").font(.title.weight(.semibold))
+      Text(AppInfo.name).font(.title.weight(.semibold))
       Text("版本 \(AppInfo.version)").font(.callout).foregroundStyle(.secondary)
         .textSelection(.enabled)
       Text("集中查看 Claude Code / Codex 会话状态：哪个在工作、哪个已完成、哪个在等你。")

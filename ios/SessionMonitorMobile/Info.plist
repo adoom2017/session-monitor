@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>SessionMonitor</string>
+	<string>Codewhistle</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -43,9 +43,9 @@
 		<string>_sessionmonitor._tcp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>扫描 Mac 上 SessionMonitor 显示的配对二维码。</string>
+	<string>Scans the pairing QR code shown by Codewhistle on your Mac.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>连接同一局域网或 Tailscale 中的 Mac，查看会话状态并发送消息。</string>
+	<string>Connects to your Mac on the same network or Tailscale to show sessions and send messages.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

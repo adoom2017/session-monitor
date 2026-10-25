@@ -88,9 +88,9 @@ if [[ -z "$notes_file" ]]; then
   cat > "$notes_file" <<NOTES
 ## 安装
 
-1. 下载 \`SessionMonitor-$version.dmg\`，打开后把 SessionMonitor 拖到"应用程序"。
-2. 启动 SessionMonitor，在菜单栏图标 → **设置… → 集成** 中为 Claude Code / Codex 点击 **安装**。
-3. 使用 Codex 时，在任意 Codex 会话中输入 \`/hooks\` 批准 SessionMonitor 的条目。
+1. 下载 \`SessionMonitor-$version.dmg\`，打开后把码哨（Codewhistle）拖到"应用程序"。
+2. 启动码哨，在菜单栏图标 → **设置… → 集成** 中为 Claude Code / Codex 点击 **安装**。
+3. 使用 Codex 时，在任意 Codex 会话中输入 \`/hooks\` 批准码哨（sm-hook）的条目。
 
 需要 macOS 14 或以上，仅支持 Apple Silicon（M 系列芯片）。安装包已签名并通过 Apple 公证。
 
@@ -105,7 +105,7 @@ fi
 
 if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
   echo "==> Tagging $tag"
-  git tag -a "$tag" -m "SessionMonitor $version"
+  git tag -a "$tag" -m "Codewhistle $version"
 fi
 git push -q origin "$tag"
 
@@ -116,6 +116,6 @@ if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
 else
   echo "==> Creating release $tag"
   gh release create "$tag" "$dmg" "$zip" --repo "$repo" --verify-tag \
-    --title "SessionMonitor $version" --notes-file "$notes_file" ${draft[@]+"${draft[@]}"} >/dev/null
+    --title "码哨 Codewhistle $version" --notes-file "$notes_file" ${draft[@]+"${draft[@]}"} >/dev/null
 fi
 echo "==> Done: $(gh release view "$tag" --repo "$repo" --json url --jq .url)"

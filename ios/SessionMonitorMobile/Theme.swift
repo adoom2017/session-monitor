@@ -2,6 +2,14 @@ import SMProtocol
 import SwiftUI
 import UIKit
 
+enum AppInfo {
+  /// The product name in the system language: 码哨 (Chinese) or Codewhistle.
+  static var name: String {
+    Bundle.main.localizedInfoDictionary?["CFBundleDisplayName"] as? String
+      ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Codewhistle"
+  }
+}
+
 /// The Mac app's tokens (docs/DESIGN.md), as dynamic colors for light and dark.
 enum Theme {
   static let blue = dynamic(light: 0x0066CC, dark: 0x0A84FF)

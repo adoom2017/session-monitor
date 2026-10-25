@@ -1,0 +1,3 @@
+"CFBundleName" = "码哨";
+"CFBundleDisplayName" = "码哨";
+"NSAppleEventsUsageDescription" = "码哨需要切换到你点击的会话所在的 Ghostty / iTerm2 标签页。";

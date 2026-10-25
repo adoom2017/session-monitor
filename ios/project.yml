@@ -1,4 +1,4 @@
-# iOS app for SessionMonitor's phone access (DEV_SPEC §17). Generate the Xcode project with:
+# iOS app (码哨 / Codewhistle) for SessionMonitor's phone access (DEV_SPEC §17). Generate the Xcode project with:
 #   cd ios && xcodegen generate
 # The generated project is committed (Xcode Cloud builds it as is): regenerate and commit it after
 # editing this file.
@@ -10,6 +10,7 @@ settings:
     STRING_CATALOG_GENERATE_SYMBOLS: YES
 options:
   bundleIdPrefix: adoom.sessionmonitor
+  developmentLanguage: en
   xcodeVersion: "27.0"
   deploymentTarget:
     iOS: "17.0"
@@ -29,7 +30,8 @@ targets:
     info:
       path: SessionMonitorMobile/Info.plist
       properties:
-        CFBundleDisplayName: SessionMonitor
+        # Localized in en.lproj / zh-Hans.lproj InfoPlist.strings: 码哨 in Chinese, Codewhistle otherwise.
+        CFBundleDisplayName: Codewhistle
         CFBundleShortVersionString: "0.1.0"
         CFBundleVersion: "1"
         UILaunchScreen: {}
@@ -38,9 +40,9 @@ targets:
         UISupportedInterfaceOrientations~ipad:
           [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
            UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
-        NSLocalNetworkUsageDescription: 连接同一局域网或 Tailscale 中的 Mac，查看会话状态并发送消息。
+        NSLocalNetworkUsageDescription: Connects to your Mac on the same network or Tailscale to show sessions and send messages.
         NSBonjourServices: [_sessionmonitor._tcp]
-        NSCameraUsageDescription: 扫描 Mac 上 SessionMonitor 显示的配对二维码。
+        NSCameraUsageDescription: Scans the pairing QR code shown by Codewhistle on your Mac.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         # Only the system's TLS (URLSession) and SHA-256 for certificate pinning: exempt

@@ -125,7 +125,7 @@ extension Session {
     if source == .sessionFileOnly {
       notes.append(
         hooksInstalled == true
-          ? "hook 已安装；这个会话自 SessionMonitor 启动后还没有新事件，暂按会话文件显示忙/闲，下一次活动后改由 hook 驱动。"
+          ? "hook 已安装；这个会话自 \(AppInfo.name) 启动后还没有新事件，暂按会话文件显示忙/闲，下一次活动后改由 hook 驱动。"
           : "未接入 hook：仅根据会话文件显示忙/闲，无法判断权限等待。")
     }
     if source == .processScan {

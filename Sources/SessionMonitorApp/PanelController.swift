@@ -34,7 +34,7 @@ private final class PassiveHostingView<Content: View>: NSHostingView<Content> {
     panel.hasShadow = true
     panel.isReleasedWhenClosed = false
     panel.delegate = self
-    panel.title = "SessionMonitor"
+    panel.title = AppInfo.name
     panel.contentView = PassiveHostingView(
       rootView: PanelContent(
         store: store, preferences: preferences, resize: { [weak self] in self?.resize() },

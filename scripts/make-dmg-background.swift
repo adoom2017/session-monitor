@@ -37,7 +37,7 @@ func draw() {
   color(0x0066CC, 0.55).setStroke()
   arrow.stroke()
 
-  let hint = "将 SessionMonitor 拖到 Applications 文件夹即可安装" as NSString
+  let hint = "将码哨（Codewhistle）拖到 Applications 文件夹即可安装" as NSString
   let style = NSMutableParagraphStyle()
   style.alignment = .center
   hint.draw(

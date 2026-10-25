@@ -24,7 +24,7 @@ struct SessionListView: View {
     .listStyle(.insetGrouped)
     .scrollContentBackground(.hidden)
     .background(Theme.canvas.ignoresSafeArea())
-    .navigationTitle(model.current?.serverName ?? "SessionMonitor")
+    .navigationTitle(model.current?.serverName ?? AppInfo.name)
     .navigationBarTitleDisplayMode(.inline)
     .navigationDestination(for: String.self) { id in SessionDetailView(sessionID: id) }
     .refreshable { model.connect() }

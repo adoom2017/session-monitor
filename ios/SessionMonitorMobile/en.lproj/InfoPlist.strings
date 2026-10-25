@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Codewhistle";
+"NSLocalNetworkUsageDescription" = "Connects to your Mac on the same network or Tailscale to show sessions and send messages.";
+"NSCameraUsageDescription" = "Scans the pairing QR code shown by Codewhistle on your Mac.";

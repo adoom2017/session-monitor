@@ -91,7 +91,7 @@ import SwiftUI
       .count
     let image = NSImage(
       systemSymbolName: StatusIconPolicy.symbolName(attention: attention),
-      accessibilityDescription: "SessionMonitor")
+      accessibilityDescription: AppInfo.name)
     image?.isTemplate = true
     status.button?.image = image
     status.button?.contentTintColor =
@@ -100,7 +100,7 @@ import SwiftUI
     status.button?.title =
       attention > 0 ? " \(attention)" : (image == nil ? "SM" : "")
     let menu = NSMenu()
-    let versionItem = NSMenuItem(title: "SessionMonitor \(AppInfo.shortVersion)", action: nil, keyEquivalent: "")
+    let versionItem = NSMenuItem(title: "\(AppInfo.name) \(AppInfo.shortVersion)", action: nil, keyEquivalent: "")
     versionItem.isEnabled = false
     menu.addItem(versionItem)
     menu.addItem(.separator())
@@ -217,7 +217,7 @@ import SwiftUI
     }
     let window = NSWindow(contentViewController: tabs)
     window.styleMask = [.titled, .closable]
-    window.title = "SessionMonitor 设置"
+    window.title = "\(AppInfo.name) 设置"
     window.toolbarStyle = .preference
     window.isReleasedWhenClosed = false
     window.center()

@@ -91,8 +91,8 @@ import UserNotifications
   /// Debug aid (SM_TEST_NOTIFICATION=1): one notification to check icon and delivery.
   func sendTest() async {
     let content = UNMutableNotificationContent()
-    content.title = "SessionMonitor 测试通知"
-    content.body = "如果左侧显示 SessionMonitor 图标，通知图标已正常。"
+    content.title = "\(AppInfo.name) 测试通知"
+    content.body = "如果左侧显示 \(AppInfo.name) 图标，通知图标已正常。"
     do {
       try await center.add(UNNotificationRequest(identifier: "sm-test", content: content, trigger: nil))
     } catch { report?(error, "测试通知发送失败") }

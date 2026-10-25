@@ -1,8 +1,8 @@
-# SessionMonitor
+# 码哨 Codewhistle
 
 ## 使用说明
 
-SessionMonitor 是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态。
+码哨（英文名 Codewhistle，原名 SessionMonitor）是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态，并配有 iPhone App。App 名称随系统语言显示为"码哨"或"Codewhistle"；安装包和应用文件仍名为 `SessionMonitor`。
 
 <table>
   <tr>
@@ -21,8 +21,8 @@ SessionMonitor 是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬�
 
 1. 将 `SessionMonitor.app` 放入 `/Applications`，然后启动。
 2. 点击菜单栏图标 → **设置…** → **集成**，为需要监控的 Claude Code 或 Codex 点击 **安装**。
-3. 使用 Codex 时，在 Codex 会话中输入 `/hooks`，批准 SessionMonitor 的条目；安装后重启已打开的 Codex 会话。
-4. 允许系统通知。需要调整权限时，打开 **系统设置 → 通知 → SessionMonitor**。
+3. 使用 Codex 时，在 Codex 会话中输入 `/hooks`，批准码哨（sm-hook）的条目；安装后重启已打开的 Codex 会话。
+4. 允许系统通知。需要调整权限时，打开 **系统设置 → 通知 → 码哨**。
 
 安装 hook 会保留其他工具的配置，并在修改前备份到 `~/.session-monitor/backups/`。App 更新后会自动同步已安装的 hook 程序。
 
@@ -38,7 +38,7 @@ tmux 会话可定位到对应窗格；使用该功能需要安装 tmux。首次�
 
 ### 手机访问
 
-在 **设置… → 手机** 中开启"允许手机访问"，用 SessionMonitor 手机 App 扫描页面上的二维码完成配对。手机和 Mac 需要在同一局域网，或都连接 Tailscale。
+在 **设置… → 手机** 中开启"允许手机访问"，用码哨手机 App 扫描页面上的二维码完成配对。手机和 Mac 需要在同一局域网，或都连接 Tailscale。
 
 - 手机上可以查看所有会话的状态和对话内容。
 - tmux 中运行的会话还可以：查看终端画面、发送消息、按 Esc 中断、点选权限菜单的选项。终端正在显示选择菜单时，不能发送文字，以免回车误选默认项。

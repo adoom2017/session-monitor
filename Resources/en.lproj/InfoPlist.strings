@@ -1,0 +1,3 @@
+"CFBundleName" = "Codewhistle";
+"CFBundleDisplayName" = "Codewhistle";
+"NSAppleEventsUsageDescription" = "Codewhistle switches to the Ghostty / iTerm2 tab of the session you click.";

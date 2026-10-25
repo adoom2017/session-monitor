@@ -25,6 +25,8 @@ cp "$binary_dir/SessionMonitor" "$app/Contents/MacOS/SessionMonitor"
 cp "$binary_dir/sm-hook" "$app/Contents/MacOS/sm-hook"
 # Regenerate with: swift scripts/make-icon.swift Resources
 cp Resources/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+# The name follows the system language: 码哨 / 碼哨 in Chinese, Codewhistle otherwise.
+cp -R Resources/en.lproj Resources/zh-Hans.lproj Resources/zh-Hant.lproj "$app/Contents/Resources/"
 # Also a compiled asset catalog (Assets.car + CFBundleIconName): macOS 26 system UI such as
 # Notification Center reads the icon from it; the .icns alone showed a blank placeholder there.
 icon_work="$(mktemp -d "${TMPDIR:-/tmp}/sm-icon.XXXXXX")"
@@ -57,8 +59,11 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>${bundle_id}</string>
-<key>CFBundleName</key><string>SessionMonitor</string>
-<key>CFBundleDisplayName</key><string>SessionMonitor</string>
+<key>CFBundleName</key><string>Codewhistle</string>
+<key>CFBundleDisplayName</key><string>Codewhistle</string>
+<key>CFBundleDevelopmentRegion</key><string>en</string>
+<key>CFBundleLocalizations</key><array><string>en</string><string>zh-Hans</string><string>zh-Hant</string></array>
+<key>LSHasLocalizedDisplayName</key><true/>
 <key>CFBundleExecutable</key><string>SessionMonitor</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleIconName</key><string>AppIcon</string>
@@ -68,7 +73,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSAppleEventsUsageDescription</key><string>SessionMonitor 需要切换到你点击的会话所在的 Ghostty / iTerm2 标签页。</string>
+<key>NSAppleEventsUsageDescription</key><string>Codewhistle switches to the Ghostty / iTerm2 tab of the session you click.</string>
 </dict></plist>
 PLIST
 plutil -lint "$app/Contents/Info.plist"
