@@ -3,7 +3,7 @@
 # Applications link on the right and a background with an arrow and a hint
 # (scripts/make-dmg-background.swift). Does not sign; package-release.sh signs and notarizes it.
 #
-#   scripts/make-dmg.sh <SessionMonitor.app> <output.dmg>
+#   scripts/make-dmg.sh <Codewhistle.app> <output.dmg>
 #
 # The layout is written by Finder (AppleScript) into the volume's .DS_Store, so the first run asks
 # to let the terminal control Finder.

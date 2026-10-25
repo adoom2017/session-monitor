@@ -12,7 +12,7 @@
 #                          macOS permissions/preferences, which are keyed by bundle id)
 #   --no-dmg               only produce the zip
 #
-# Output: dist/SessionMonitor-<version>.zip and dist/SessionMonitor-<version>.dmg
+# Output: dist/Codewhistle-<version>.zip and dist/Codewhistle-<version>.dmg
 # The local development app in build/ is not touched (its permissions are tied to its signature).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -49,9 +49,9 @@ fi
 echo "==> Identity: $identity"
 
 dist="dist"
-app="$dist/SessionMonitor.app"
-zip="$dist/SessionMonitor-$version.zip"
-dmg="$dist/SessionMonitor-$version.dmg"
+app="$dist/Codewhistle.app"
+zip="$dist/Codewhistle-$version.zip"
+dmg="$dist/Codewhistle-$version.dmg"
 mkdir -p "$dist"
 rm -rf "$app" "$zip" "$dmg"
 

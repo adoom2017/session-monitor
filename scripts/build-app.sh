@@ -1,8 +1,9 @@
 #!/bin/bash
-# Builds SessionMonitor.app. Defaults: ad-hoc signed into build/ for local development.
+# Builds Codewhistle.app (码哨). Defaults: ad-hoc signed into build/ for local development.
 # Overrides (used by scripts/package-release.sh):
 #   SIGN_IDENTITY  codesign identity ("-" = ad-hoc); a real identity enables hardened runtime + timestamp
-#   APP_DIR        output bundle path (default build/SessionMonitor.app)
+#   APP_DIR        output bundle path (default build/Codewhistle.app). Finder shows the localized name
+#                  (码哨) only when the file name matches the base CFBundleDisplayName, Codewhistle.
 #   BUNDLE_ID      CFBundleIdentifier (default local.sessionmonitor.app; changing it resets
 #                  macOS permissions and preferences, which are keyed by bundle id)
 #   APP_VERSION    CFBundleShortVersionString (default 1.0.0)
@@ -11,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 identity="${SIGN_IDENTITY:--}"
-app="${APP_DIR:-build/SessionMonitor.app}"
+app="${APP_DIR:-build/Codewhistle.app}"
 bundle_id="${BUNDLE_ID:-local.sessionmonitor.app}"
 version="${APP_VERSION:-1.0.0}"
 build_number="${APP_BUILD:-1}"

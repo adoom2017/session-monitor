@@ -2,7 +2,7 @@
 
 ## 使用说明
 
-码哨（英文名 Codewhistle，原名 SessionMonitor）是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态，并配有 iPhone App。App 名称随系统语言显示为"码哨"或"Codewhistle"；安装包和应用文件仍名为 `SessionMonitor`。
+码哨（英文名 Codewhistle，原名 SessionMonitor）是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态，并配有 iPhone App。App 名称随系统语言显示为"码哨"或"Codewhistle"；应用文件为 `Codewhistle.app`（访达只有在文件名与英文名一致时才会显示中文名"码哨"）。
 
 <table>
   <tr>
@@ -19,7 +19,7 @@
 
 ### 安装与接入
 
-1. 将 `SessionMonitor.app` 放入 `/Applications`，然后启动。
+1. 将 `Codewhistle.app` 放入 `/Applications`，然后启动。从旧版本升级时，先退出并删除原来的 `SessionMonitor.app`；配对、hook 和设置会保留。
 2. 点击菜单栏图标 → **设置…** → **集成**，为需要监控的 Claude Code 或 Codex 点击 **安装**。
 3. 使用 Codex 时，在 Codex 会话中输入 `/hooks`，批准码哨（sm-hook）的条目；安装后重启已打开的 Codex 会话。
 4. 允许系统通知。需要调整权限时，打开 **系统设置 → 通知 → 码哨**。
@@ -50,7 +50,7 @@ tmux 会话可定位到对应窗格；使用该功能需要安装 tmux。首次�
 
 在 **设置… → 集成** 中卸载相应 hook。
 
-卸载 hook 会保留其他工具的配置与备份。移除应用前，先关闭开机启动、卸载 hook、退出应用，再删除 `SessionMonitor.app`。
+卸载 hook 会保留其他工具的配置与备份。移除应用前，先关闭开机启动、卸载 hook、退出应用，再删除 `Codewhistle.app`。
 
 ## 编译与打包说明
 
@@ -65,10 +65,10 @@ tmux 会话可定位到对应窗格；使用该功能需要安装 tmux。首次�
 
 ```bash
 scripts/build-app.sh
-open build/SessionMonitor.app
+open build/Codewhistle.app
 ```
 
-产物为 `build/SessionMonitor.app`，包含应用和 `sm-hook`，默认使用 ad-hoc 签名。只构建 Apple Silicon（arm64）版本，需在 Apple Silicon Mac 上编译。
+产物为 `build/Codewhistle.app`，包含应用和 `sm-hook`，默认使用 ad-hoc 签名。只构建 Apple Silicon（arm64）版本，需在 Apple Silicon Mac 上编译。
 
 ### iOS App
 
@@ -101,9 +101,9 @@ scripts/package-release.sh \
 
 产物位于 `dist/`：
 
-- `SessionMonitor.app`
-- `SessionMonitor-1.0.0.zip`
-- `SessionMonitor-1.0.0.dmg`
+- `Codewhistle.app`
+- `Codewhistle-1.0.0.zip`
+- `Codewhistle-1.0.0.dmg`
 
 脚本默认选择钥匙串中唯一的 Developer ID Application 证书；有多个证书时，用 `--identity "签名身份名称"` 指定。`--build` 设置构建号，`--no-dmg` 仅生成 ZIP。省略 `--notary-profile` 时只签名，不提交公证。
 

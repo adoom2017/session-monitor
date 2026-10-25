@@ -8,7 +8,7 @@
 #   --draft                  create the release as a draft
 #   --repo OWNER/NAME        default: the origin remote's GitHub repo
 #
-# Refuses to publish unless: the working tree is clean and pushed, dist/SessionMonitor-<version>.dmg
+# Refuses to publish unless: the working tree is clean and pushed, dist/Codewhistle-<version>.dmg
 # and .zip exist, the app in the zip has CFBundleShortVersionString <version>, and both the DMG and
 # that app are notarized (stapled ticket + Gatekeeper "Notarized Developer ID").
 # Tags HEAD as v<version> (if the tag does not exist yet) and pushes the tag.
@@ -34,8 +34,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 tag="v$version"
-dmg="dist/SessionMonitor-$version.dmg"
-zip="dist/SessionMonitor-$version.zip"
+dmg="dist/Codewhistle-$version.dmg"
+zip="dist/Codewhistle-$version.zip"
 fail() { echo "error: $*" >&2; exit 1; }
 
 command -v gh >/dev/null || fail "GitHub CLI (gh) is not installed"
@@ -68,8 +68,8 @@ echo "==> Verifying artifacts"
 work="$(mktemp -d "${TMPDIR:-/tmp}/sm-publish.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 ditto -x -k "$zip" "$work"
-app="$work/SessionMonitor.app"
-[[ -d "$app" ]] || fail "$zip does not contain SessionMonitor.app"
+app="$work/Codewhistle.app"
+[[ -d "$app" ]] || fail "$zip does not contain Codewhistle.app"
 app_version="$(defaults read "$app/Contents/Info" CFBundleShortVersionString)"
 [[ "$app_version" == "$version" ]] || fail "app in $zip is version $app_version, not $version"
 
@@ -88,7 +88,7 @@ if [[ -z "$notes_file" ]]; then
   cat > "$notes_file" <<NOTES
 ## 安装
 
-1. 下载 \`SessionMonitor-$version.dmg\`，打开后把码哨（Codewhistle）拖到"应用程序"。
+1. 下载 \`Codewhistle-$version.dmg\`，打开后把码哨（Codewhistle）拖到"应用程序"。
 2. 启动码哨，在菜单栏图标 → **设置… → 集成** 中为 Claude Code / Codex 点击 **安装**。
 3. 使用 Codex 时，在任意 Codex 会话中输入 \`/hooks\` 批准码哨（sm-hook）的条目。
 
@@ -98,8 +98,8 @@ if [[ -z "$notes_file" ]]; then
 
 | 文件 | SHA-256 |
 |---|---|
-| SessionMonitor-$version.dmg | \`$dmg_sha\` |
-| SessionMonitor-$version.zip | \`$zip_sha\` |
+| Codewhistle-$version.dmg | \`$dmg_sha\` |
+| Codewhistle-$version.zip | \`$zip_sha\` |
 NOTES
 fi
 
