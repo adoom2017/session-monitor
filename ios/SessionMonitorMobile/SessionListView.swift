@@ -34,7 +34,7 @@ struct SessionListView: View {
     .navigationBarTitleDisplayMode(.inline)
     .navigationDestination(for: String.self) { id in SessionDetailView(sessionID: id) }
     .navigationDestination(isPresented: $showingUsage) { UsagePage() }
-    .refreshable { model.connect() }
+    .refreshable { await model.refresh() }
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
         Menu {

@@ -33,8 +33,9 @@ struct SessionMonitorMobileApp: App {
     }
     .onChange(of: scenePhase) { _, phase in
       // iOS suspends background sockets; reconnect (and get a fresh snapshot) when active again.
+      // Back from inactive only (Control Center, a system alert), the connection is still up.
       switch phase {
-      case .active: if model.current != nil { model.connect() }
+      case .active: if model.current != nil, model.connectedHost == nil { model.connect() }
       case .background: model.disconnect()
       default: break
       }

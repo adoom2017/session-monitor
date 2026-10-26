@@ -22,7 +22,14 @@ import UIKit
 
   private(set) var servers: [PairedServer] = ServerStore.load()
   private(set) var currentID: String? = UserDefaults.standard.string(forKey: "currentServer")
-  private(set) var connection: Connection = .idle
+  private(set) var connection: Connection = .idle {
+    didSet {
+      switch connection {
+      case .failed, .idle: finishRefresh()
+      default: break
+      }
+    }
+  }
   private(set) var sessions: [String: RemoteSession] = [:]
   private(set) var transcripts: [String: [TranscriptEntry]] = [:]
   /// Sessions whose history goes further back than what is loaded.
@@ -46,6 +53,7 @@ import UIKit
   @ObservationIgnored private var transcriptSubscriptions: Set<String> = []
   @ObservationIgnored private var paneSubscriptions: Set<String> = []
   @ObservationIgnored private var pendingRequests: [String: String] = [:]
+  @ObservationIgnored private var refreshWaiters: [CheckedContinuation<Void, Never>] = []
 
   var current: PairedServer? { servers.first { $0.id == currentID } ?? servers.first }
 
@@ -159,6 +167,20 @@ import UIKit
     }
   }
 
+  /// Pull to refresh: reconnects and returns once the snapshot is in or the attempt failed.
+  /// Returning at once let the list change while the refresh control was still retracting,
+  /// which could leave it scrolled off its rows (blank until pulled again).
+  func refresh() async {
+    connect()
+    await withCheckedContinuation { refreshWaiters.append($0) }
+  }
+
+  private func finishRefresh() {
+    let waiters = refreshWaiters
+    refreshWaiters = []
+    for waiter in waiters { waiter.resume() }
+  }
+
   func disconnect() {
     loop?.cancel()
     loop = nil
@@ -207,6 +229,7 @@ import UIKit
     case .welcome: break
     case .snapshot(let list):
       sessions = Dictionary(uniqueKeysWithValues: list.map { ($0.id, $0) })
+      finishRefresh()
     case .sessionUpdated(let session):
       sessions[session.id] = session
     case .sessionRemoved(let id):
