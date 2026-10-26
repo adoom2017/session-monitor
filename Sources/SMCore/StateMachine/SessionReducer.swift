@@ -38,6 +38,7 @@ public enum SessionReducer {
         s.runningSubagents = 0
         s.model = nil
         s.gitBranch = nil
+        s.usage = nil
         s.transcriptPath = event.transcriptPath
         s.unread = false
         s.state = .idle

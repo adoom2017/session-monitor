@@ -38,6 +38,17 @@ public final class RemoteConnection: NSObject, URLSessionTaskDelegate, @unchecke
     public var token: String?
     /// The address that answered.
     public var host: String
+    /// The Mac's current addresses, if it reports them.
+    public var hosts: [String]?
+    /// Optional abilities of the Mac (RemoteProtocol.features); empty for older Macs.
+    public var features: [String] = []
+
+    /// Addresses to store for next time: the one that answered, then what the Mac reports
+    /// (replacing addresses from networks it has left), else the previous list.
+    public func addresses(previous: [String]) -> [String] {
+      var seen: Set<String> = []
+      return ([host] + (hosts ?? previous)).filter { seen.insert($0).inserted }
+    }
   }
 
   private let fingerprint: String
@@ -91,11 +102,12 @@ public final class RemoteConnection: NSObject, URLSessionTaskDelegate, @unchecke
     do {
       try await send(.hello(hello))
       switch try await receive() {
-      case .welcome(let version, let serverName, let deviceId, let token):
+      case .welcome(let version, let serverName, let deviceId, let token, let hosts, let features):
         guard version == RemoteProtocol.version else {
           throw RemoteClientError.rejected("协议版本不一致（Mac \(version)，本机 \(RemoteProtocol.version)），请更新")
         }
-        return Welcome(serverName: serverName, deviceId: deviceId, token: token, host: host)
+        return Welcome(
+          serverName: serverName, deviceId: deviceId, token: token, host: host, hosts: hosts, features: features ?? [])
       case .error(let message): throw RemoteClientError.rejected(message)
       default: throw RemoteClientError.unexpectedMessage
       }

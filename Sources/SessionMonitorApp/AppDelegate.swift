@@ -13,6 +13,7 @@ import SwiftUI
   private var status: NSStatusItem!
   private var notifications: NotificationManager!
   private var settingsWindow: NSWindow?
+  private var usageWindow: NSWindow?
   private var hotKey: EventHotKeyRef?
   private var hotKeyHandler: EventHandlerRef?
   private var menuSessions: [String: Session] = [:]
@@ -23,6 +24,8 @@ import SwiftUI
     remote = RemoteAccess(store: store, directory: runtime.directory) { [weak self] text in
       Task { await self?.runtime.writeLog(text) }
     }
+    let usage = runtime.usage
+    remote.usageRows = { usage.rows }
     panel = PanelController(
       store: store, jump: { [weak self] in self?.jump($0) },
       copy: { [weak self] in self?.copy($0) }, showLog: { [weak self] in self?.showLog() },
@@ -57,6 +60,7 @@ import SwiftUI
         try? await Task.sleep(for: .seconds(4))  // first reconcile has populated sessions
         self?.panel.writeSnapshots(to: URL(fileURLWithPath: directory))
         self?.writeSettingsSnapshot(to: URL(fileURLWithPath: directory))
+        await self?.writeUsageSnapshot(to: URL(fileURLWithPath: directory))
       }
     }
     Task {
@@ -124,6 +128,7 @@ import SwiftUI
     add(menu, "全部标为已读", #selector(markRead))
     let login = add(menu, "开机启动", #selector(toggleLogin))
     login.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    add(menu, "用量统计…", #selector(showUsage))
     add(menu, "设置…", #selector(showSettings), key: ",")
     add(menu, "查看日志", #selector(showLog))
     if store.lastError != nil { add(menu, "查看当前错误", #selector(showError)) }
@@ -200,6 +205,23 @@ import SwiftUI
     NSApp.activate()
   }
 
+  @objc private func showUsage() {
+    if usageWindow == nil {
+      let runtime = runtime!
+      let view = UsageView(stats: runtime.usage) { Task { await runtime.refreshLedger() } }
+      let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+      window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+      window.title = "\(AppInfo.name) 用量统计"
+      window.isReleasedWhenClosed = false
+      window.setContentSize(NSSize(width: 680, height: 760))
+      window.center()
+      usageWindow = window
+    }
+    usageWindow?.makeKeyAndOrderFront(nil)
+    NSApp.activate()
+    Task { await runtime.refreshLedger() }
+  }
+
   /// Native preferences window: toolbar tabs, each sized to its content.
   private func makeSettingsWindow() -> NSWindow {
     let tabs = NSTabViewController()
@@ -253,6 +275,20 @@ import SwiftUI
   }
 
   @objc func openSettingsFromPanel() { showSettings() }
+
+  /// Debug aid (SM_SNAPSHOT_DIR): the usage window once the ledger has been read, to usage.png.
+  func writeUsageSnapshot(to directory: URL) async {
+    while runtime.usage.scanning || runtime.usage.updatedAt == nil { try? await Task.sleep(for: .milliseconds(500)) }
+    let hosting = NSHostingView(rootView: UsageView(stats: runtime.usage) {})
+    hosting.frame = NSRect(x: 0, y: 0, width: 680, height: 900)
+    let window = NSWindow(contentRect: hosting.frame, styleMask: [.titled], backing: .buffered, defer: false)
+    window.contentView = hosting
+    try? await Task.sleep(for: .milliseconds(800))
+    guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return }
+    hosting.cacheDisplay(in: hosting.bounds, to: rep)
+    try? rep.representation(using: .png, properties: [:])?.write(to: directory.appendingPathComponent("usage.png"))
+    _ = window
+  }
 
   /// Debug aid (SM_SNAPSHOT_DIR): renders each settings tab offscreen to settings-<tab>.png.
   func writeSettingsSnapshot(to directory: URL) {

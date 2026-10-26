@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import SMProtocol
 
 /// Which peers may connect (DEV_SPEC §17.3): loopback, private LAN, link-local and Tailscale.
 public enum RemoteAddressPolicy {
@@ -19,17 +20,9 @@ public enum RemoteAddressPolicy {
     return false
   }
 
-  static func isAllowedV4(_ a: UInt32) -> Bool {
-    func within(_ base: UInt32, _ bits: UInt32) -> Bool { a >> (32 - bits) == base >> (32 - bits) }
-    return within(0x7F00_0000, 8)  // 127/8
-      || within(0x0A00_0000, 8)  // 10/8
-      || within(0xAC10_0000, 12)  // 172.16/12
-      || within(0xC0A8_0000, 16)  // 192.168/16
-      || within(0xA9FE_0000, 16)  // 169.254/16
-      || within(0x6440_0000, 10)  // 100.64/10 (Tailscale CGNAT range)
-  }
+  static func isAllowedV4(_ a: UInt32) -> Bool { RemoteAddressRange.isAllowedV4(a) }
 
-  static func isTailscaleV4(_ a: UInt32) -> Bool { a >> 22 == 0x6440_0000 >> 22 }
+  static func isTailscaleV4(_ a: UInt32) -> Bool { RemoteAddressRange.isTailscaleV4(a) }
 
   /// IPv4 addresses a phone can use: LAN (private ranges) and Tailscale, each sorted.
   public static func localAddresses() -> (lan: [String], tailscale: [String]) {

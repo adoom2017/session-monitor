@@ -20,6 +20,9 @@ enum Theme {
   static let cyan = dynamic(light: 0x0071A4, dark: 0x64D2FF)
   static let indigo = dynamic(light: 0x3634A3, dark: 0x7A78EA)
   static let idle = dynamic(light: 0x6E7687, dark: 0x798398)
+  /// Usage chart series, as on the Mac (validated for both modes and color blindness).
+  static let chartClaude = dynamic(light: 0x5856D6, dark: 0x7A78EA)
+  static let chartCodex = dynamic(light: 0x00897B, dark: 0x1F9E8F)
   static let textSecondary = dynamic(light: 0x5B6475, dark: 0x98A2B3)
   static let canvas = dynamic(light: 0xF7F9FC, dark: 0x090C15)
   static let raised = dynamic(light: 0xFFFFFF, dark: 0x111727)

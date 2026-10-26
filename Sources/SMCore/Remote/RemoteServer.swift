@@ -76,7 +76,10 @@ public final class RemoteServer: @unchecked Sendable {
     guard let nwPort = NWEndpoint.Port(rawValue: port) else { throw MonitorError.invalid("port \(port)") }
     let listener = try NWListener(using: parameters, on: nwPort)
     if let serviceName {
-      listener.service = NWListener.Service(name: serviceName, type: RemoteProtocol.serviceType)
+      // The fingerprint tag lets a paired phone find this Mac again after its address changes.
+      var txt = NWTXTRecord()
+      txt[RemoteProtocol.fingerprintTXTKey] = RemoteProtocol.fingerprintTag(identity.fingerprint)
+      listener.service = NWListener.Service(name: serviceName, type: RemoteProtocol.serviceType, txtRecord: txt)
     }
     listener.stateUpdateHandler = { [weak self, weak listener] state in
       switch state {

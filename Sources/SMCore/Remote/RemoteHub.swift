@@ -19,6 +19,8 @@ import SMProtocol
   private let audit: @MainActor (String) -> Void
   public private(set) var status = Status() { didSet { if status != oldValue { statusChanged?(status) } } }
   public var statusChanged: ((Status) -> Void)?
+  /// All local sessions' usage (UsageLedger rows), for clients that ask.
+  public var usageRows: (() -> [UsageRow])?
 
   private var server: RemoteServer?
   private var identity: RemoteIdentity?
@@ -168,14 +170,21 @@ import SMProtocol
       return
     }
     var issued: String?
-    if let token = hello.token, let device = devices.authenticate(token: token) {
+    if let token = hello.token, let device = devices.authenticate(token: token, clientId: hello.clientId) {
       client.device = device
     } else if let code = hello.pairingCode,
-      let (device, token) = try? devices.pair(code: code, name: hello.deviceName)
+      let paired = try? devices.pair(
+        code: code, name: hello.deviceName, clientId: hello.clientId, replacingToken: hello.replacingToken)
     {
-      client.device = device
-      issued = token
-      audit("REMOTE 已配对设备「\(device.name)」（\(peer.host)）")
+      client.device = paired.device
+      issued = paired.token
+      // Pairing again (e.g. after changing networks) replaces this phone's earlier entry.
+      for other in clients.values where other !== client && paired.replaced.contains(other.device?.id ?? "") {
+        other.peer.reject("此设备已重新配对")
+      }
+      audit(
+        "REMOTE 已配对设备「\(paired.device.name)」（\(peer.host)）"
+          + (paired.replaced.isEmpty ? "" : "，替换了此前的 \(paired.replaced.count) 条配对"))
     } else {
       failures[peer.host, default: []].append(now)
       audit("REMOTE 认证失败（\(peer.host)，\(hello.token == nil ? "配对码" : "令牌")）")
@@ -183,7 +192,11 @@ import SMProtocol
       return
     }
     guard let device = client.device else { return }
-    peer.send(.welcome(version: RemoteProtocol.version, serverName: serverName, deviceId: device.id, token: issued))
+    let addresses = RemoteAddressPolicy.localAddresses()
+    peer.send(
+      .welcome(
+        version: RemoteProtocol.version, serverName: serverName, deviceId: device.id, token: issued,
+        hosts: addresses.lan + addresses.tailscale, features: RemoteProtocol.features))
     peer.send(.snapshot(sessions: store.sessions.map(Self.dto)))
     updateConnected()
   }
@@ -205,7 +218,7 @@ import SMProtocol
       state: RemoteSessionState(rawValue: s.state.rawValue) ?? .unknown, stateSince: s.stateSince,
       unread: s.unread, currentTool: s.currentTool, attentionMessage: s.attentionMessage,
       lastAssistantSnippet: s.lastAssistantSnippet, model: s.model, gitBranch: s.gitBranch,
-      remoteInput: TmuxRemote.canSend(s), lastEventAt: s.lastEventAt)
+      remoteInput: TmuxRemote.canSend(s), lastEventAt: s.lastEventAt, usage: s.usage)
   }
 
   private func session(publicID: String) -> Session? {
@@ -338,6 +351,9 @@ import SMProtocol
       client.panes.removeValue(forKey: id)
     case .markRead(let id):
       if let session = session(publicID: id) { store.markRead(session.id) }
+    case .requestUsage(let days):
+      let first = UsageReport.lastDays(max(1, min(days, 366))).first ?? ""
+      peer.send(.usage(rows: (usageRows?() ?? []).filter { $0.day >= first }))
     case .sendMessage(let requestId, let id, let text):
       act(
         requestId: requestId, sessionID: id, client: client, summary: "发送「\(singleLine(text, limit: 80))」",

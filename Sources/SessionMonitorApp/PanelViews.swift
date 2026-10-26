@@ -6,12 +6,12 @@ import SwiftUI
   var expanded: Bool { didSet { UserDefaults.standard.set(expanded, forKey: "panelExpanded") } }
   /// Tip of the row under the mouse, shown in the panel's tip bar (tooltips never appear in this
   /// non-activating panel, so hover tips are drawn by the panel itself).
-  var hoverTip: (owner: String, text: String)?
+  var hoverTip: (owner: String, text: String, symbol: String)?
   init() { expanded = UserDefaults.standard.object(forKey: "panelExpanded") as? Bool ?? true }
 
-  func hover(_ owner: String, tip: String?) {
+  func hover(_ owner: String, tip: String?, symbol: String = "lightbulb.fill") {
     if let tip {
-      hoverTip = (owner, tip)
+      hoverTip = (owner, tip, symbol)
     } else if hoverTip?.owner == owner {
       hoverTip = nil  // only the row that set it may clear it (exit/enter order is not guaranteed)
     }
@@ -57,9 +57,12 @@ struct OutsideTmuxBadge: View {
 
 struct TipBar: View {
   let text: String
+  var symbol = "lightbulb.fill"
+  /// Hints are orange; plain information (usage) is blue.
+  private var tint: Color { symbol == "lightbulb.fill" ? Theme.orange : Theme.blue }
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
-      Image(systemName: "lightbulb.fill").foregroundStyle(Theme.orange)
+      Image(systemName: symbol).foregroundStyle(tint)
       Text(text).font(.caption).fixedSize(horizontal: false, vertical: true)
     }
     .padding(10)
@@ -67,9 +70,9 @@ struct TipBar: View {
     // Solid, not a material: the rows underneath must not show through the text.
     .background(
       RoundedRectangle(cornerRadius: Theme.radiusMedium).fill(Theme.canvasRaised)
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).fill(Theme.orange.opacity(0.10)))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).fill(tint.opacity(0.10)))
         .shadow(color: .black.opacity(0.25), radius: 10, y: 4))
-    .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).strokeBorder(Theme.orange.opacity(0.4)))
+    .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).strokeBorder(tint.opacity(0.4)))
     .padding(8)
     .allowsHitTesting(false)
   }
@@ -227,9 +230,19 @@ struct SessionRow: View {
             Spacer(minLength: 6)
             Text(duration).font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary)
           }
-          Text("\(session.projectName) · \(session.detail)").font(.caption).foregroundStyle(
-            Theme.textSecondary
-          ).lineLimit(1)
+          HStack(spacing: 6) {
+            Text("\(session.projectName) · \(session.detail)").font(.caption).foregroundStyle(
+              Theme.textSecondary
+            ).lineLimit(1)
+            if let usage = session.usage {
+              Spacer(minLength: 0)
+              UsageBadge(usage: usage)
+                .background(
+                  HoverReporter { inside in
+                    preferences.hover(session.id + "#usage", tip: inside ? usage.tip : nil, symbol: "chart.bar.fill")
+                  })
+            }
+          }
         }
       }
       .padding(.horizontal, 14).padding(.vertical, 10)
@@ -410,7 +423,7 @@ struct PanelContent: View {
     }
     .overlay(alignment: .bottom) {
       if preferences.expanded, let tip = preferences.hoverTip {
-        TipBar(text: tip.text).transition(.opacity)
+        TipBar(text: tip.text, symbol: tip.symbol).transition(.opacity)
       }
     }
     .animation(.easeOut(duration: 0.12), value: preferences.hoverTip?.text)

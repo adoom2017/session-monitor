@@ -23,6 +23,7 @@ struct SessionDetailView: View {
     VStack(spacing: 0) {
       if let session {
         header(session)
+        if let usage = session.usage { SessionUsageLine(usage: usage) }
         if session.remoteInput {
           Picker("视图", selection: $tab) {
             ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }

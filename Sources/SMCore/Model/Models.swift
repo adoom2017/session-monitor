@@ -1,4 +1,5 @@
 import Foundation
+import SMProtocol
 
 public enum MonitorError: Error, LocalizedError, Sendable, Equatable {
   case invalid(String)
@@ -264,6 +265,8 @@ public struct Session: Identifiable, Sendable, Equatable {
   public var endedAt: Date?
   public var rawStatus: String?
   public var source: DataSource = .hooks
+  /// Tokens of the current thread, read from its transcript (UsageTracker).
+  public var usage: SessionUsage?
 
   public init(event: AgentEvent) {
     id = event.key

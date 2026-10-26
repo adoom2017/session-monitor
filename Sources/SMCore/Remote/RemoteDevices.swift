@@ -8,6 +8,9 @@ public struct RemoteDevice: Codable, Sendable, Equatable, Identifiable {
   public var tokenHash: String
   public var pairedAt: Date
   public var lastSeen: Date?
+  /// The phone app install (Hello.clientId); absent for devices paired by older apps until they
+  /// next connect.
+  public var clientId: String?
 }
 
 /// Paired phones and the current one-time pairing code (DEV_SPEC §17.3). Persisted in
@@ -42,8 +45,13 @@ public final class RemoteDevices: @unchecked Sendable {
 
   public func cancelPairingCode() { lock.withLock { code = nil } }
 
-  /// Consumes the code (single use) and registers the device. Returns the device and its token.
-  public func pair(code candidate: String, name: String, now: Date = Date()) throws -> (RemoteDevice, String) {
+  /// Consumes the code (single use) and registers the device, replacing the entries of the same
+  /// phone (same `clientId`, or holding `replacingToken`). Returns the device, its token and the
+  /// ids of the replaced entries.
+  public func pair(
+    code candidate: String, name: String, clientId: String? = nil, replacingToken: String? = nil,
+    now: Date = Date()
+  ) throws -> (device: RemoteDevice, token: String, replaced: [String]) {
     try lock.withLock {
       guard let current = code, now < current.expires,
         candidate.uppercased() == current.value
@@ -52,18 +60,25 @@ public final class RemoteDevices: @unchecked Sendable {
       let token = RemoteFiles.randomToken(bytes: 32)
       let device = RemoteDevice(
         id: UUID().uuidString, name: String(name.prefix(60)), tokenHash: Self.hash(token),
-        pairedAt: now, lastSeen: now)
+        pairedAt: now, lastSeen: now, clientId: clientId)
+      let previous = replacingToken.map(Self.hash)
+      let replaced = devices.filter {
+        (clientId != nil && $0.clientId == clientId) || (previous != nil && $0.tokenHash == previous)
+      }.map(\.id)
+      devices.removeAll { replaced.contains($0.id) }
       devices.append(device)
       try save()
-      return (device, token)
+      return (device, token, replaced)
     }
   }
 
-  public func authenticate(token: String, now: Date = Date()) -> RemoteDevice? {
+  /// The device holding `token`; records `clientId` for devices paired before it was sent.
+  public func authenticate(token: String, clientId: String? = nil, now: Date = Date()) -> RemoteDevice? {
     let hash = Self.hash(token)
     return lock.withLock {
       guard let index = devices.firstIndex(where: { $0.tokenHash == hash }) else { return nil }
       devices[index].lastSeen = now
+      if let clientId, devices[index].clientId == nil { devices[index].clientId = clientId }
       try? save()  // lastSeen is informational; a failed write must not lock the device out
       return devices[index]
     }

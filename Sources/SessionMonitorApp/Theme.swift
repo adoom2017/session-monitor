@@ -17,6 +17,10 @@ enum Theme {
   static let teal = dynamic(light: 0x007D8F, dark: 0x40C8E0)
   static let purple = dynamic(light: 0x8944AB, dark: 0xBF5AF2)
   static let idle = dynamic(light: 0x6E7687, dark: 0x798398)
+  /// Usage chart series (Claude, Codex): lighter/darker steps than the badges so both sit in the
+  /// readable lightness band and stay apart for color-blind readers (validated in both modes).
+  static let chartClaude = dynamic(light: 0x5856D6, dark: 0x7A78EA)
+  static let chartCodex = dynamic(light: 0x00897B, dark: 0x1F9E8F)
 
   /// Tint laid over the material, and the solid raised surface (tip bar, reduced transparency).
   static let canvas = dynamic(light: 0xF7F9FC, dark: 0x090C15)

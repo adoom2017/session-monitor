@@ -20,6 +20,7 @@
 		9AD8DC58757A6902266636B1 /* ThinkingShotsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B0ED02C19665B80AADCCD02 /* ThinkingShotsUITests.swift */; };
 		9C50858006A977DB0689D1E7 /* ServerStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A9EF7DBF6D7B5DEC54E1428 /* ServerStore.swift */; };
 		A4033B3151265EB514876364 /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 789E054B6E48970D87D7A78A /* TerminalView.swift */; };
+		A9422E08F20DADAFCBE0289A /* UsageViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDE82BD31160EB9E0A5F32FD /* UsageViews.swift */; };
 		AA0B5DA1EC355AD755F573F7 /* PairingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18EA9E9D4398897BF79B6A22 /* PairingView.swift */; };
 		ADA01E3FBA46CE89F9DD1CD2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 560EBEA5E202D7BB57CB352A /* Assets.xcassets */; };
 		B80BCEEF32BA0EFE5CD70664 /* MobileModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7D667E9F1F380B4F76C70EE /* MobileModel.swift */; };
@@ -60,6 +61,7 @@
 		CC4DFCDE80C28093807EB9E0 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		DF1E0078D984EEBCA7B685BC /* SessionMonitorMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SessionMonitorMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E97ED7C432175E5C0B0C6B35 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
+		EDE82BD31160EB9E0A5F32FD /* UsageViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageViews.swift; sourceTree = "<group>"; };
 		F6F982E47F4F4E6B6E75AF5A /* KeyboardUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardUITests.swift; sourceTree = "<group>"; };
 		F7D667E9F1F380B4F76C70EE /* MobileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModel.swift; sourceTree = "<group>"; };
 		FF3CDB6E0749F0940CE97D87 /* PullUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PullUITests.swift; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 				CAD06F81AEADC5DC66CC0F49 /* SessionMonitorMobileApp.swift */,
 				789E054B6E48970D87D7A78A /* TerminalView.swift */,
 				2EBDD98A497AC94E7E11690E /* Theme.swift */,
+				EDE82BD31160EB9E0A5F32FD /* UsageViews.swift */,
 				DC2BD4669FC3D3991239FFB7 /* InfoPlist.strings */,
 			);
 			path = SessionMonitorMobile;
@@ -262,6 +265,7 @@
 				D6BAB641BF2DAD98B655ADDC /* SessionMonitorMobileApp.swift in Sources */,
 				A4033B3151265EB514876364 /* TerminalView.swift in Sources */,
 				21F7DA7A90D6F42F45EFA44C /* Theme.swift in Sources */,
+				A9422E08F20DADAFCBE0289A /* UsageViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

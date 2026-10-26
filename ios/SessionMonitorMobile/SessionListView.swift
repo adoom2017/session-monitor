@@ -4,6 +4,12 @@ import SwiftUI
 struct SessionListView: View {
   @Environment(MobileModel.self) private var model
   @State private var pairingAnother = false
+  #if DEBUG
+    // `-SMOpenUsage YES` opens the usage page (screenshots in testing).
+    @State private var showingUsage = UserDefaults.standard.bool(forKey: "SMOpenUsage")
+  #else
+    @State private var showingUsage = false
+  #endif
 
   var body: some View {
     List {
@@ -27,6 +33,7 @@ struct SessionListView: View {
     .navigationTitle(model.current?.serverName ?? AppInfo.name)
     .navigationBarTitleDisplayMode(.inline)
     .navigationDestination(for: String.self) { id in SessionDetailView(sessionID: id) }
+    .navigationDestination(isPresented: $showingUsage) { UsagePage() }
     .refreshable { model.connect() }
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
@@ -36,6 +43,7 @@ struct SessionListView: View {
               ForEach(model.servers) { Text($0.serverName).tag($0.id) }
             }
           }
+          Button("用量统计", systemImage: "chart.bar.xaxis") { showingUsage = true }
           Button("配对另一台 Mac", systemImage: "plus") { pairingAnother = true }
           if let current = model.current {
             Button("移除「\(current.serverName)」", systemImage: "trash", role: .destructive) {
@@ -99,6 +107,10 @@ struct SessionRow: View {
           Tag(text: session.agentLabel, color: session.agentColor)
           if !session.remoteInput && session.state != .ended {
             Tag(text: "仅查看", color: Theme.idle)
+          }
+          // Only when it matters: auto-compaction is near.
+          if let usage = session.usage, usage.nearlyFull, let percent = usage.percent {
+            Tag(text: "上下文 \(percent)%", color: Theme.orange)
           }
           Spacer(minLength: 4)
           TimelineView(.periodic(from: .now, by: 30)) { context in

@@ -5,7 +5,14 @@ import Foundation
 public enum RemoteProtocol {
   public static let version = 1
   public static let serviceType = "_sessionmonitor._tcp"
+  /// Bonjour TXT key carrying the start of the certificate fingerprint, so a client can tell its
+  /// Mac among several before connecting (the connection itself still checks the full pin).
+  public static let fingerprintTXTKey = "fp"
+  public static func fingerprintTag(_ fingerprint: String) -> String { String(fingerprint.lowercased().prefix(16)) }
   public static let defaultPort: UInt16 = 47821
+  /// Optional abilities the Mac announces in its welcome; a client only asks for what is listed
+  /// (an older Mac would not understand the request, an older client the reply).
+  public static let features = ["usage"]
   /// Longest message text accepted for one `sendMessage`.
   public static let maxMessageLength = 8000
 
@@ -43,12 +50,14 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
   /// Messages and keys can be sent (the session runs in a tmux pane and has not ended).
   public var remoteInput: Bool
   public var lastEventAt: Date
+  /// Tokens of the current thread; absent from older Macs.
+  public var usage: SessionUsage?
 
   public init(
     id: String, agent: String, name: String, projectName: String, state: RemoteSessionState,
     stateSince: Date, unread: Bool, currentTool: String?, attentionMessage: String?,
     lastAssistantSnippet: String?, model: String?, gitBranch: String?, remoteInput: Bool,
-    lastEventAt: Date
+    lastEventAt: Date, usage: SessionUsage? = nil
   ) {
     self.id = id
     self.agent = agent
@@ -64,6 +73,7 @@ public struct RemoteSession: Codable, Sendable, Equatable, Identifiable {
     self.gitBranch = gitBranch
     self.remoteInput = remoteInput
     self.lastEventAt = lastEventAt
+    self.usage = usage
   }
 }
 
@@ -140,12 +150,22 @@ public struct Hello: Codable, Sendable, Equatable {
   /// Either a device token from an earlier pairing, or a one-time pairing code.
   public var token: String?
   public var pairingCode: String?
+  /// Stable per app install, so pairing again replaces this phone's earlier entry on the Mac
+  /// instead of adding a second one.
+  public var clientId: String?
+  /// With a pairing code: the token this phone held for this Mac before; its entry is replaced.
+  public var replacingToken: String?
 
-  public init(version: Int = RemoteProtocol.version, deviceName: String, token: String?, pairingCode: String?) {
+  public init(
+    version: Int = RemoteProtocol.version, deviceName: String, token: String?, pairingCode: String?,
+    clientId: String? = nil, replacingToken: String? = nil
+  ) {
     self.version = version
     self.deviceName = deviceName
     self.token = token
     self.pairingCode = pairingCode
+    self.clientId = clientId
+    self.replacingToken = replacingToken
   }
 }
 
@@ -160,6 +180,8 @@ public enum ClientMessage: Codable, Sendable, Equatable {
   case sendMessage(requestId: String, sessionId: String, text: String)
   case sendKey(requestId: String, sessionId: String, key: RemoteKey)
   case markRead(sessionId: String)
+  /// Usage rows of the last `days` days (only if the welcome listed "usage").
+  case requestUsage(days: Int)
 }
 
 public enum ActionStatus: String, Codable, Sendable {
@@ -173,7 +195,10 @@ public enum ActionStatus: String, Codable, Sendable {
 
 public enum ServerMessage: Codable, Sendable, Equatable {
   /// `token` is set only right after pairing; the client stores it for later connections.
-  case welcome(version: Int, serverName: String, deviceId: String, token: String?)
+  /// `hosts`: the Mac's current addresses (LAN, then Tailscale), so the client keeps them up to
+  /// date after the Mac changes networks. Optional so older clients and servers interoperate.
+  case welcome(
+    version: Int, serverName: String, deviceId: String, token: String?, hosts: [String]?, features: [String]?)
   case snapshot(sessions: [RemoteSession])
   case sessionUpdated(RemoteSession)
   case sessionRemoved(sessionId: String)
@@ -183,6 +208,8 @@ public enum ServerMessage: Codable, Sendable, Equatable {
   /// A page to put before what the client holds.
   case transcriptOlder(sessionId: String, entries: [TranscriptEntry], hasOlder: Bool)
   case pane(PaneSnapshot)
+  /// All local sessions' usage by day, agent, model and project (answer to requestUsage).
+  case usage(rows: [UsageRow])
   case actionResult(requestId: String, status: ActionStatus, message: String?)
   case error(message: String)
 }

@@ -17,13 +17,17 @@ struct SessionMonitorMobileApp: App {
           if url.host == "pair" { Task { await model.pair(link: url) } }
         }
         #if DEBUG
-          // Simulator testing without taps: `simctl launch … -SMPairLink '<link>'`.
+          // Simulator testing without taps: `simctl launch … -SMPairLink '<link>'` (with
+          // `-SMRepair YES` even when already paired); `-SMForgetAddresses YES` makes the saved
+          // addresses stale, as after the Mac changes networks.
           .task {
-            if let link = UserDefaults.standard.string(forKey: "SMPairLink"), let url = URL(string: link),
-              model.servers.isEmpty
+            let defaults = UserDefaults.standard
+            if let link = defaults.string(forKey: "SMPairLink"), let url = URL(string: link),
+              model.servers.isEmpty || defaults.bool(forKey: "SMRepair")
             {
               await model.pair(link: url)
             }
+            if defaults.bool(forKey: "SMForgetAddresses") { model.forgetAddresses() }
           }
         #endif
     }

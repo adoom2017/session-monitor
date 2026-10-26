@@ -6,6 +6,7 @@ import SMProtocol
 //   sm-remote pair '<sessionmonitor://pair?...>' [--name NAME]
 //   sm-remote list
 //   sm-remote watch
+//   sm-remote usage            (all local sessions, last 30 days)
 //   sm-remote transcript <session-id> [--follow]
 //   sm-remote pane <session-id>
 //   sm-remote send <session-id> <text>
@@ -51,7 +52,8 @@ func describe(_ s: RemoteSession) -> String {
 
 func describe(_ message: ServerMessage) -> String {
   switch message {
-  case .welcome(_, let name, let device, _): return "welcome \(name) device=\(device)"
+  case .welcome(_, let name, let device, _, let hosts, let features):
+    return "welcome \(name) device=\(device) hosts=\(hosts ?? []) features=\(features ?? [])"
   case .snapshot(let sessions): return "snapshot\n" + sessions.map { "  " + describe($0) }.joined(separator: "\n")
   case .sessionUpdated(let s): return "updated  " + describe(s)
   case .sessionRemoved(let id): return "removed  \(id)"
@@ -66,6 +68,10 @@ func describe(_ message: ServerMessage) -> String {
     return "pane \(pane.sessionId)\n\(pane.text)\n--- menu (\(pane.menu.count))\n\(menu)"
   case .actionResult(let id, let status, let message): return "result \(id) \(status.rawValue) \(message ?? "")"
   case .error(let message): return "error \(message)"
+  case .usage(let rows):
+    return "usage \(rows.count) rows\n"
+      + UsageReport.ranking(rows, by: \.day).sorted { $0.name > $1.name }
+      .map { "  \($0.name)  \(UsageReport.format($0.usage.total))" }.joined(separator: "\n")
   }
 }
 
@@ -91,17 +97,20 @@ do {
       hosts: payload.hosts, port: payload.port, fingerprint: payload.fingerprint,
       hello: Hello(deviceName: name, token: nil, pairingCode: payload.code))
     guard let token = welcome.token else { fail("server did not issue a token") }
-    // Put the address that answered first for later connections.
-    let hosts = [welcome.host] + payload.hosts.filter { $0 != welcome.host }
     try saveServer(
       PairedServer(
-        serverName: welcome.serverName, hosts: hosts, port: payload.port,
+        serverName: welcome.serverName, hosts: welcome.addresses(previous: payload.hosts), port: payload.port,
         fingerprint: payload.fingerprint, deviceId: welcome.deviceId, token: token))
     print("paired with \(welcome.serverName) via \(welcome.host) (device \(welcome.deviceId))")
     connection.close()
   case "list":
     let connection = try await connect(loadServer())
     try await run(connection) { if case .snapshot = $0 { true } else { false } }
+    connection.close()
+  case "usage":
+    let connection = try await connect(loadServer())
+    try await connection.send(.requestUsage(days: 30))
+    try await run(connection) { if case .usage = $0 { true } else { false } }
     connection.close()
   case "watch":
     let connection = try await connect(loadServer())

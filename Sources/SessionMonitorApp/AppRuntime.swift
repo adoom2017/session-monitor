@@ -1,5 +1,6 @@
 import Foundation
 import SMCore
+import SMProtocol
 
 @MainActor final class AppRuntime {
   let store: SessionStore
@@ -12,6 +13,10 @@ import SMCore
   private var enrichment: [String: Task<Void, Never>] = [:]
   private var enrichmentGeneration: [String: UUID] = [:]
   private var completionDeadline: [String: Task<Void, Never>] = [:]
+  private let tracker = UsageTracker()
+  let ledger: UsageLedger
+  let usage = UsageStats()
+  private var usageTasks: [Task<Void, Never>] = []
   var stateChanged: ((Session?, Session) -> Void)?
   var notifyDone: ((Session) -> Void)?
 
@@ -19,6 +24,47 @@ import SMCore
     self.store = store
     self.directory = directory
     sources = ["claude": ClaudeSource(), "codex": CodexSource()]
+    ledger = UsageLedger(directory: directory)
+  }
+
+  /// Session rows' usage every few seconds; the all-sessions ledger every minute (the first scan
+  /// of all history takes a while and runs in the background).
+  private func startUsage() {
+    usageTasks.append(
+      Task { [weak self] in
+        while !Task.isCancelled {
+          guard let self else { return }
+          let sessions = store.sessions
+          let values = await tracker.update(sessions)
+          for session in sessions {
+            store.applyUsage(values[session.id], id: session.id, sessionID: session.currentSessionId)
+          }
+          try? await Task.sleep(for: .seconds(3))
+        }
+      })
+    usage.rows = ledger.rows()
+    usageTasks.append(
+      Task { [weak self] in
+        while !Task.isCancelled {
+          guard let self else { return }
+          await refreshLedger()
+          try? await Task.sleep(for: .seconds(60))
+        }
+      })
+  }
+
+  func refreshLedger() async {
+    guard !usage.scanning else { return }
+    usage.scanning = true
+    defer { usage.scanning = false }
+    let ledger = ledger
+    do {
+      let rows = try await Task.detached(priority: .utility) { () throws -> [UsageRow]? in
+        try ledger.refresh() ? ledger.rows() : nil
+      }.value
+      if let rows { usage.rows = rows }
+      usage.updatedAt = Date()
+    } catch { await report(error, context: "用量统计读取失败") }
   }
 
   func start() async {
@@ -71,6 +117,7 @@ import SMCore
           }
         }
       }
+      startUsage()
       await writeLog("SessionMonitor started")
     } catch { await report(error, context: "启动失败") }
   }
@@ -195,5 +242,6 @@ import SMCore
     for task in enrichment.values { task.cancel() }
     server?.stop()
     for task in completionDeadline.values { task.cancel() }
+    for task in usageTasks { task.cancel() }
   }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SMProtocol
 import Observation
 
 @MainActor @Observable public final class SessionStore {
@@ -110,6 +111,13 @@ import Observation
     s.lastAssistantSnippet = enrichment.snippet ?? s.lastAssistantSnippet
     s.model = enrichment.model ?? s.model
     s.gitBranch = enrichment.gitBranch ?? s.gitBranch
+    byID[id] = s
+  }
+
+  /// Usage read for thread `sessionID`; dropped when the row has moved on to another thread.
+  public func applyUsage(_ usage: SessionUsage?, id: String, sessionID: String) {
+    guard var s = byID[id], s.currentSessionId == sessionID, s.usage != usage else { return }
+    s.usage = usage
     byID[id] = s
   }
 
@@ -228,6 +236,7 @@ import Observation
       guard var s = byID[id] else { preconditionFailure("session must exist after creation") }
       if s.source == .sessionFileOnly, s.currentSessionId != file.sessionID {
         s.currentSessionId = file.sessionID
+        s.usage = nil
         s.title = nil
         s.lastAssistantSnippet = nil
         s.currentTool = nil

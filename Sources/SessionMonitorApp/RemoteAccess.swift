@@ -17,6 +17,11 @@ import SMProtocol
   var enabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
   @ObservationIgnored private let hub: RemoteHub?
+  /// Usage rows answered to phones that ask (RemoteHub.usageRows).
+  var usageRows: (() -> [UsageRow])? {
+    get { hub?.usageRows }
+    set { hub?.usageRows = newValue }
+  }
 
   init(store: SessionStore, directory: URL, audit: @escaping @MainActor (String) -> Void) {
     do {

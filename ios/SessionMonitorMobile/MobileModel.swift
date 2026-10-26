@@ -33,6 +33,13 @@ import UIKit
   private(set) var feedback: [String: Feedback] = [:]
   var pairingError: String?
   private(set) var pairing = false
+  /// Optional abilities of the connected Mac (RemoteProtocol.features).
+  private(set) var features: [String] = []
+  /// All local sessions' usage on the Mac (requestUsage); nil until it answers.
+  private(set) var usageRows: [UsageRow]?
+  private(set) var usageLoading = false
+  var supportsUsage: Bool { features.contains("usage") }
+  var connectedHost: String? { if case .connected(let host) = connection { host } else { nil } }
 
   @ObservationIgnored private var link: RemoteConnection?
   @ObservationIgnored private var loop: Task<Void, Never>?
@@ -59,13 +66,17 @@ import UIKit
     defer { pairing = false }
     do {
       let payload = try PairingPayload(url: url)
+      // Pairing this Mac again: the Mac replaces the old entry instead of listing the phone twice.
+      let previous = servers.first { $0.fingerprint == payload.fingerprint }
       let (connection, welcome) = try await RemoteConnection.connect(
         hosts: payload.hosts, port: payload.port, fingerprint: payload.fingerprint,
-        hello: Hello(deviceName: Self.deviceName, token: nil, pairingCode: payload.code))
+        hello: Hello(
+          deviceName: Self.deviceName, token: nil, pairingCode: payload.code, clientId: Self.clientID,
+          replacingToken: previous?.token))
       connection.close()
       guard let token = welcome.token else { throw RemoteClientError.unexpectedMessage }
       let server = PairedServer(
-        serverName: welcome.serverName, hosts: [welcome.host] + payload.hosts.filter { $0 != welcome.host },
+        serverName: welcome.serverName, hosts: welcome.addresses(previous: payload.hosts),
         port: payload.port, fingerprint: payload.fingerprint, deviceId: welcome.deviceId, token: token)
       servers.removeAll { $0.fingerprint == server.fingerprint }
       servers.append(server)
@@ -79,6 +90,7 @@ import UIKit
   func select(_ id: String) {
     currentID = id
     UserDefaults.standard.set(id, forKey: "currentServer")
+    usageRows = nil
     sessions = [:]
     transcripts = [:]
     panes = [:]
@@ -111,15 +123,15 @@ import UIKit
         guard let self else { return }
         connection = .connecting
         do {
-          let (link, welcome) = try await RemoteConnection.connect(
-            hosts: server.hosts, port: server.port, fingerprint: server.fingerprint,
-            hello: Hello(deviceName: Self.deviceName, token: server.token, pairingCode: nil))
+          let (link, welcome) = try await Self.reach(server)
           if Task.isCancelled { link.close(); return }
           self.link = link
           // Requests sent on the previous connection got no answer; let them be asked again.
           loadingOlder.removeAll()
           connection = .connected(host: welcome.host)
-          remember(host: welcome.host, of: server)
+          features = welcome.features
+          usageLoading = false
+          remember(welcome, of: server)
           delay = 1
           for id in transcriptSubscriptions { try await link.send(.subscribeTranscript(sessionId: id)) }
           for id in paneSubscriptions { try await link.send(.subscribePane(sessionId: id)) }
@@ -155,13 +167,40 @@ import UIKit
     connection = .idle
   }
 
-  /// The address that answered goes first next time.
-  private func remember(host: String, of server: PairedServer) {
-    guard let index = servers.firstIndex(where: { $0.id == server.id }), servers[index].hosts.first != host
-    else { return }
-    servers[index].hosts = [host] + servers[index].hosts.filter { $0 != host }
+  /// Tries the saved addresses while looking for the Mac on this network by Bonjour; when the
+  /// saved ones fail (the Mac changed networks), tries what Bonjour found.
+  private static func reach(_ server: PairedServer) async throws -> (RemoteConnection, RemoteConnection.Welcome) {
+    let hello = Hello(deviceName: deviceName, token: server.token, pairingCode: nil, clientId: clientID)
+    let discovery = Task { await RemoteDiscovery.find(fingerprint: server.fingerprint) }
+    do {
+      return try await RemoteConnection.connect(
+        hosts: server.hosts, port: server.port, fingerprint: server.fingerprint, hello: hello)
+    } catch RemoteClientError.unreachable(let errors) {
+      let found = await discovery.value.filter { !server.hosts.contains($0) }
+      guard !found.isEmpty else { throw RemoteClientError.unreachable(errors) }
+      return try await RemoteConnection.connect(
+        hosts: found, port: server.port, fingerprint: server.fingerprint, hello: hello)
+    }
+  }
+
+  /// Next time: the address that answered first, then the Mac's current ones.
+  private func remember(_ welcome: RemoteConnection.Welcome, of server: PairedServer) {
+    guard let index = servers.firstIndex(where: { $0.id == server.id }) else { return }
+    let hosts = welcome.addresses(previous: servers[index].hosts)
+    guard hosts != servers[index].hosts else { return }
+    servers[index].hosts = hosts
     try? ServerStore.save(servers)
   }
+
+  #if DEBUG
+    /// Testing discovery: replaces the saved addresses with one that does not answer.
+    func forgetAddresses() {
+      guard let index = servers.firstIndex(where: { $0.id == current?.id }) else { return }
+      servers[index].hosts = ["10.255.255.1"]
+      try? ServerStore.save(servers)
+      connect()
+    }
+  #endif
 
   private func handle(_ message: ServerMessage) {
     switch message {
@@ -190,6 +229,9 @@ import UIKit
       if older { hasOlder.insert(id) } else { hasOlder.remove(id) }
     case .pane(let pane):
       panes[pane.sessionId] = pane
+    case .usage(let rows):
+      usageRows = rows
+      usageLoading = false
     case .actionResult(let requestId, let status, let message):
       guard let id = pendingRequests.removeValue(forKey: requestId) else { return }
       feedback[id] = Feedback(status: status, message: message ?? Self.describe(status), at: Date())
@@ -216,6 +258,15 @@ import UIKit
       try? await link?.send(.subscribeTranscript(sessionId: id))
       if wantsPane { try? await link?.send(.subscribePane(sessionId: id)) }
       if sessions[id]?.unread == true { try? await link?.send(.markRead(sessionId: id)) }
+    }
+  }
+
+  /// Asks the Mac for the usage of the last `days` days (only Macs announcing "usage").
+  func requestUsage(days: Int = 90) {
+    guard supportsUsage, let link, !usageLoading else { return }
+    usageLoading = true
+    Task {
+      do { try await link.send(.requestUsage(days: days)) } catch { usageLoading = false }
     }
   }
 
@@ -266,6 +317,8 @@ import UIKit
       }
     }
   }
+
+  static let clientID = ServerStore.clientID()
 
   static var deviceName: String {
     let name = UIDevice.current.name

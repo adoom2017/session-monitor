@@ -1,5 +1,5 @@
 import Foundation
-import SMProtocol
+@testable import SMProtocol
 import Testing
 
 @testable import SMCore
@@ -32,7 +32,7 @@ import Testing
     let code = devices.newPairingCode(now: now)
     #expect(code.count == 8)
     #expect(throws: MonitorError.self) { try devices.pair(code: "WRONG123", name: "x", now: now) }
-    let (device, token) = try devices.pair(code: code.lowercased(), name: "iPhone", now: now)
+    let (device, token, _) = try devices.pair(code: code.lowercased(), name: "iPhone", now: now)
     #expect(throws: MonitorError.self) { try devices.pair(code: code, name: "again", now: now) }
     #expect(devices.authenticate(token: token)?.id == device.id)
     #expect(devices.authenticate(token: token + "x") == nil)
@@ -330,5 +330,120 @@ extension RemoteTests {
       }
       if case .error(let text) = message { Issue.record("error: \(text)"); return }
     }
+  }
+}
+
+extension RemoteTests {
+  /// Real case (2026-10-26): pairing again after the Mac changed networks listed the phone twice.
+  @Test func pairingAgainReplacesTheSamePhone() throws {
+    let dir = try tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let devices = try RemoteDevices(directory: dir)
+    // Paired by an older app: no client id until it connects again.
+    let first = try devices.pair(code: devices.newPairingCode(), name: "iPhone")
+    #expect(devices.authenticate(token: first.token, clientId: "phone-a")?.clientId == "phone-a")
+    let other = try devices.pair(code: devices.newPairingCode(), name: "iPad", clientId: "pad")
+    let second = try devices.pair(code: devices.newPairingCode(), name: "iPhone", clientId: "phone-a")
+    #expect(second.replaced == [first.device.id])
+    #expect(devices.authenticate(token: first.token) == nil)
+    // An entry that never sent its client id is found by the token the phone still holds.
+    let third = try devices.pair(
+      code: devices.newPairingCode(), name: "iPhone", clientId: "phone-b", replacingToken: second.token)
+    #expect(third.replaced == [second.device.id])
+    #expect(try RemoteDevices(directory: dir).all.map(\.name).sorted() == ["iPad", "iPhone"])
+    #expect(devices.authenticate(token: other.token)?.name == "iPad")
+  }
+
+  /// Older apps and Macs omit the new optional fields; both directions must still decode.
+  @Test func welcomeAndHelloStayCompatible() throws {
+    let decoder = RemoteProtocol.decoder()
+    let old = #"{"welcome":{"version":1,"serverName":"Mac","deviceId":"d1"}}"#
+    guard case .welcome(1, "Mac", "d1", nil, nil, nil) = try decoder.decode(ServerMessage.self, from: Data(old.utf8)) else {
+      Issue.record("old welcome"); return
+    }
+    let hello = #"{"hello":{"_0":{"version":1,"deviceName":"iPhone","token":"t"}}}"#
+    guard case .hello(let decoded) = try decoder.decode(ClientMessage.self, from: Data(hello.utf8)) else {
+      Issue.record("old hello"); return
+    }
+    #expect(decoded.token == "t" && decoded.clientId == nil && decoded.replacingToken == nil)
+    let welcome = RemoteConnection.Welcome(serverName: "Mac", deviceId: "d", token: nil, host: "100.1.2.3", hosts: ["192.168.5.9", "100.1.2.3"], features: [])
+    #expect(welcome.addresses(previous: ["192.168.1.2"]) == ["100.1.2.3", "192.168.5.9"])
+    let silent = RemoteConnection.Welcome(serverName: "Mac", deviceId: "d", token: nil, host: "192.168.1.2", hosts: nil, features: [])
+    #expect(silent.addresses(previous: ["10.0.0.1", "192.168.1.2"]) == ["192.168.1.2", "10.0.0.1"])
+  }
+
+  /// End to end: the welcome carries the Mac's addresses, pairing again replaces the old entry
+  /// and drops its connection, and Bonjour finds the Mac by its fingerprint.
+  @MainActor @Test func repairingAndDiscovery() async throws {
+    let dir = try tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let hub = try RemoteHub(store: SessionStore(), directory: dir) { _ in }
+    try await hub.start(serverName: "Test Mac \(UUID().uuidString.prefix(4))", port: 0, advertise: true)
+    defer { hub.stop() }
+    for _ in 0..<50 where hub.status.port == nil { try await Task.sleep(for: .milliseconds(100)) }
+    let port = try #require(hub.status.port)
+    let first = try #require(hub.pairingPayload())
+    let (old, welcome) = try await RemoteConnection.connect(
+      hosts: ["127.0.0.1"], port: port, fingerprint: first.fingerprint,
+      hello: Hello(deviceName: "Phone", token: nil, pairingCode: first.code, clientId: "c1"))
+    #expect(welcome.hosts == first.hosts)
+    let second = try #require(hub.pairingPayload())
+    let (connection, again) = try await RemoteConnection.connect(
+      hosts: ["127.0.0.1"], port: port, fingerprint: second.fingerprint,
+      hello: Hello(deviceName: "Phone", token: nil, pairingCode: second.code, clientId: "c1"))
+    defer { connection.close() }
+    #expect(hub.devices.all.map(\.id) == [again.deviceId])
+    var messages = old.messages.makeAsyncIterator()
+    var reason: String?
+    while let message = try? await messages.next() {
+      if case .error(let text) = message { reason = text }
+    }
+    #expect(reason == "此设备已重新配对")
+
+    let found = await RemoteDiscovery.find(fingerprint: second.fingerprint, timeout: 5)
+    #expect(!found.isEmpty)
+    // Only addresses the Mac accepts, even when it also sits on a network outside those ranges.
+    #expect(found.allSatisfy { first.hosts.contains($0) }, "\(found) vs \(first.hosts)")
+    #expect(await RemoteDiscovery.find(fingerprint: String(repeating: "0", count: 64), timeout: 1).isEmpty)
+  }
+}
+
+extension RemoteTests {
+  /// The welcome lists "usage"; asking returns the ledger's rows of the requested days, and
+  /// session rows carry their thread's usage.
+  @MainActor @Test func usageIsServedToClientsThatAsk() async throws {
+    let dir = try tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let store = SessionStore()
+    try store.apply(AgentEvent(sessionId: "s1", agentPid: 4242, cwd: "/work/demo", at: Date(), type: .promptSubmitted))
+    let usage = SessionUsage(total: TokenUsage(input: 10, output: 5), model: "m", contextTokens: 100, contextWindow: 1000)
+    store.applyUsage(usage, id: "claude:4242", sessionID: "s1")
+    let hub = try RemoteHub(store: store, directory: dir) { _ in }
+    let today = UsageReport.dayKey(Date())
+    hub.usageRows = {
+      [UsageRow(day: "2020-01-01", agent: "claude", model: "m", project: "old", usage: TokenUsage(output: 1)),
+       UsageRow(day: today, agent: "codex", model: "g", project: "demo", usage: TokenUsage(input: 7))]
+    }
+    try await hub.start(serverName: "Test Mac", port: 0, advertise: false)
+    defer { hub.stop() }
+    for _ in 0..<50 where hub.status.port == nil { try await Task.sleep(for: .milliseconds(100)) }
+    let port = try #require(hub.status.port)
+    let payload = try #require(hub.pairingPayload())
+    let (connection, welcome) = try await RemoteConnection.connect(
+      hosts: ["127.0.0.1"], port: port, fingerprint: payload.fingerprint,
+      hello: Hello(deviceName: "Test", token: nil, pairingCode: payload.code))
+    defer { connection.close() }
+    #expect(welcome.features.contains("usage"))
+    var messages = connection.messages.makeAsyncIterator()
+    guard case .snapshot(let sessions)? = try await messages.next() else { Issue.record("no snapshot"); return }
+    #expect(sessions.first?.usage == usage)
+    try await connection.send(.requestUsage(days: 30))
+    while let message = try await messages.next() {
+      if case .usage(let rows) = message {
+        #expect(rows.map(\.project) == ["demo"])
+        return
+      }
+    }
+    Issue.record("no usage")
   }
 }
