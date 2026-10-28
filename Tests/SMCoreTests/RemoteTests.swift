@@ -291,6 +291,34 @@ import Testing
 }
 
 extension RemoteTests {
+  /// Off the LAN the saved LAN addresses no longer answer: they must not hold back the address
+  /// that does (Tailscale) by their timeouts, nor a refusal that stops the retries.
+  @MainActor @Test func staleAddressesDoNotDelayTheOneThatAnswers() async throws {
+    let dir = try tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let hub = try RemoteHub(store: SessionStore(), directory: dir) { _ in }
+    try await hub.start(serverName: "Test Mac", port: 0, advertise: false)
+    defer { hub.stop() }
+    for _ in 0..<50 where hub.status.port == nil { try await Task.sleep(for: .milliseconds(100)) }
+    let port = try #require(hub.status.port)
+    let payload = try #require(hub.pairingPayload())
+
+    // 192.0.2.1 (TEST-NET) does not answer; one by one it took the full 6 s timeout.
+    let started = ContinuousClock.now
+    let (connection, welcome) = try await RemoteConnection.connect(
+      hosts: ["192.0.2.1", "127.0.0.1"], port: port, fingerprint: payload.fingerprint,
+      hello: Hello(deviceName: "Test Phone", token: nil, pairingCode: payload.code))
+    connection.close()
+    #expect(welcome.host == "127.0.0.1")
+    #expect(ContinuousClock.now - started < .seconds(3))
+
+    await #expect(throws: RemoteClientError.rejected("此设备未配对或已被吊销，请重新配对")) {
+      _ = try await RemoteConnection.connect(
+        hosts: ["127.0.0.2", "127.0.0.1"], port: port, fingerprint: payload.fingerprint,
+        hello: Hello(deviceName: "Test Phone", token: "not-a-token", pairingCode: nil))
+    }
+  }
+
   /// Real case (R4, 2026-10-24): a new session's hooks name its transcript before the first
   /// prompt creates it. Subscribing then must wait for the file, not fail for good.
   @MainActor @Test func transcriptSubscriptionWaitsForTheFile() async throws {

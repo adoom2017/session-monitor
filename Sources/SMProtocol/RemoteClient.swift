@@ -18,6 +18,14 @@ public enum RemoteClientError: Error, LocalizedError, Sendable, Equatable {
     case .unreachable(let errors): "无法连接到 Mac：" + errors.joined(separator: "；")
     }
   }
+
+  /// A wrong certificate or a refused token will not get better on another address.
+  var isFinal: Bool {
+    switch self {
+    case .fingerprintMismatch, .rejected: true
+    default: false
+    }
+  }
 }
 
 public enum RemoteFingerprint {
@@ -66,25 +74,59 @@ public final class RemoteConnection: NSObject, URLSessionTaskDelegate, @unchecke
     session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
   }
 
-  /// Tries `hosts` in order and returns the first connection that completes the handshake.
+  private enum Attempt: Sendable {
+    case connected(RemoteConnection, Welcome)
+    case failed(String, any Error)
+  }
+
+  /// Delay between starting attempts: the first address (the one that answered last time) usually
+  /// wins before the others start, so the Mac does not see a burst of connections.
+  static let stagger = Duration.milliseconds(300)
+
+  /// Tries `hosts` concurrently, staggered in order, and returns the first connection that
+  /// completes the handshake. Off the LAN, the stale LAN addresses no longer hold back the
+  /// Tailscale one by their timeouts.
   public static func connect(
     hosts: [String], port: UInt16, fingerprint: String, hello: Hello
   ) async throws -> (RemoteConnection, Welcome) {
-    var errors: [String] = []
-    for host in hosts {
-      let connection = RemoteConnection(fingerprint: fingerprint)
-      do {
-        let welcome = try await connection.handshake(host: host, port: port, hello: hello)
-        return (connection, welcome)
-      } catch let error as RemoteClientError {
-        connection.close()
-        // A wrong certificate or a refused token will not get better on another address.
-        switch error {
-        case .fingerprintMismatch, .rejected: throw error
-        default: errors.append("\(host)：\(error.localizedDescription)")
+    let (results, sink) = AsyncStream.makeStream(of: Attempt.self)
+    let attempts = hosts.enumerated().map { index, host in
+      Task {
+        do { try await Task.sleep(for: stagger * index) } catch {
+          sink.yield(.failed(host, error))
+          return
         }
-      } catch {
-        connection.close()
+        let connection = RemoteConnection(fingerprint: fingerprint)
+        do {
+          sink.yield(.connected(connection, try await connection.handshake(host: host, port: port, hello: hello)))
+        } catch {
+          connection.close()
+          sink.yield(.failed(host, error))
+        }
+      }
+    }
+    var finished = 0
+    var errors: [String] = []
+    // Handshakes still under way are not waited for; one that also succeeds is closed.
+    func abandonRest() {
+      for attempt in attempts { attempt.cancel() }
+      let pending = hosts.count - finished
+      Task {
+        for await late in results.prefix(pending) {
+          if case .connected(let extra, _) = late { extra.close() }
+        }
+      }
+    }
+    for await attempt in results.prefix(hosts.count) {
+      finished += 1
+      switch attempt {
+      case .connected(let connection, let welcome):
+        abandonRest()
+        return (connection, welcome)
+      case .failed(_, let error as RemoteClientError) where error.isFinal:
+        abandonRest()
+        throw error
+      case .failed(let host, let error):
         errors.append("\(host)：\(error.localizedDescription)")
       }
     }
