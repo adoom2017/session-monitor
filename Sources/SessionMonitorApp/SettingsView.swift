@@ -460,7 +460,22 @@ struct PhoneSettings: View {
       }
     }
     .settingsPage()
-    .onWindowFocus { remote.reloadDevices() }
+    // A fresh code (and the current addresses) whenever the page is shown, and a new one when it
+    // expires; the code from when access was turned on is stale by the time anyone looks.
+    .task(id: remote.status.running) {
+      while remote.status.running {
+        remote.newPairingCode()
+        do { try await Task.sleep(for: .seconds(max(1, remote.pairingExpires?.timeIntervalSinceNow ?? 0))) } catch {
+          return
+        }
+      }
+    }
+    // A phone used the code (single use): show the next one.
+    .onChange(of: remote.devices.map(\.id)) { if remote.status.running { remote.newPairingCode() } }
+    .onWindowFocus {
+      remote.reloadDevices()
+      if remote.status.running { remote.newPairingCode() }
+    }
     .confirmationDialog(
       "吊销「\(confirmRevoke?.name ?? "")」？", isPresented: .init(
         get: { confirmRevoke != nil }, set: { if !$0 { confirmRevoke = nil } })
