@@ -4,7 +4,8 @@
 #   scripts/publish-release.sh <version> [options]
 #
 #   --build NOTARY_PROFILE   first run package-release.sh (notarized) with this profile
-#   --notes FILE             release notes (Markdown); default: generated install notes
+#   --notes FILE             release notes (Markdown); default: the commit subjects since the
+#                            previous v* tag, then install notes and checksums
 #   --draft                  create the release as a draft
 #   --repo OWNER/NAME        default: the origin remote's GitHub repo
 #
@@ -16,7 +17,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 version="${1:-}"
-[[ -n "$version" && "$version" != -* ]] || { sed -n '2,15p' "$0"; exit 2; }
+[[ -n "$version" && "$version" != -* ]] || { sed -n '2,16p' "$0"; exit 2; }
 shift
 notary_profile=""
 notes_file=""
@@ -28,7 +29,7 @@ while [[ $# -gt 0 ]]; do
     --notes) notes_file="$2"; shift 2 ;;
     --draft) draft=(--draft); shift ;;
     --repo) repo="$2"; shift 2 ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -84,8 +85,20 @@ echo "    $dmg and $zip are notarized (version $app_version)"
 dmg_sha="$(shasum -a 256 "$dmg" | cut -d' ' -f1)"
 zip_sha="$(shasum -a 256 "$zip" | cut -d' ' -f1)"
 if [[ -z "$notes_file" ]]; then
+  # The previous release, also when re-running for a tag that already exists on HEAD.
+  previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude "$tag" HEAD 2>/dev/null || true)"
+  if [[ -n "$previous" ]]; then
+    changes="$(git log --no-merges --format='- %s' "$previous..HEAD")"
+    changes+=$'\n\n'"完整变更：[$previous...$tag](https://github.com/$repo/compare/$previous...$tag)"
+  else
+    changes="- 首个版本"
+  fi
   notes_file="$work/notes.md"
   cat > "$notes_file" <<NOTES
+## 变更
+
+$changes
+
 ## 安装
 
 1. 下载 \`Codewhistle-$version.dmg\`，打开后把码哨（Codewhistle）拖到"应用程序"。

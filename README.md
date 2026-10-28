@@ -111,7 +111,7 @@ scripts/package-release.sh \
 
 脚本默认选择钥匙串中唯一的 Developer ID Application 证书；有多个证书时，用 `--identity "签名身份名称"` 指定。`--build` 设置构建号，`--no-dmg` 仅生成 ZIP。省略 `--notary-profile` 时只签名，不提交公证。
 
-DMG 由 `scripts/make-dmg.sh` 生成：打开后是带背景和箭头的拖拽安装窗口，App 在左、Applications 在右。窗口布局由 Finder 写入，首次打包时需要允许终端控制 Finder。
+DMG 由 `scripts/make-dmg.sh` 生成：打开后是带背景和箭头的拖拽安装窗口，App 在左、Applications 在右；挂载后的磁盘和 `.dmg` 文件都显示 App 图标（`.dmg` 文件的图标只在本机可见，下载后显示系统的磁盘映像图标）。窗口布局由 Finder 写入，首次打包时需要允许终端控制 Finder。
 
 ### 发布到 GitHub
 
@@ -127,4 +127,4 @@ scripts/publish-release.sh 1.1.3
 scripts/publish-release.sh 1.1.4 --build sessionmonitor-notary
 ```
 
-脚本发布前会检查：工作区干净且已推送；`dist/` 里有对应版本的 DMG 和 zip；zip 里的 App 版本号正确；DMG 和 App 都已公证并能通过 Gatekeeper。任何一项不满足都会停止。检查通过后，给 HEAD 打 `v<版本>` 标签并推送，再创建 Release，上传 DMG 和 zip，附安装说明和 SHA-256。`--notes 文件` 用自定义说明，`--draft` 创建草稿。
+脚本发布前会检查：工作区干净且已推送；`dist/` 里有对应版本的 DMG 和 zip；zip 里的 App 版本号正确；DMG 和 App 都已公证并能通过 Gatekeeper。任何一项不满足都会停止。检查通过后，给 HEAD 打 `v<版本>` 标签并推送，再创建 Release，上传 DMG 和 zip。说明自动生成：上一个 `v*` 标签以来的提交标题作为变更列表，附比较链接、安装说明和 SHA-256。`--notes 文件` 用自定义说明，`--draft` 创建草稿。

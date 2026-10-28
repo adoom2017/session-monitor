@@ -1,7 +1,8 @@
 #!/bin/bash
 # Build a drag-to-install DMG: a 640×400 window with 128pt icons, the app on the left, an
 # Applications link on the right and a background with an arrow and a hint
-# (scripts/make-dmg-background.swift). Does not sign; package-release.sh signs and notarizes it.
+# (scripts/make-dmg-background.swift); the mounted volume and the .dmg file show the app icon.
+# Does not sign; package-release.sh signs and notarizes it.
 #
 #   scripts/make-dmg.sh <Codewhistle.app> <output.dmg>
 #
@@ -69,6 +70,11 @@ OSA
 # Finder writes .DS_Store asynchronously; wait for it before detaching.
 for _ in {1..20}; do [[ -f "$mount/.DS_Store" ]] && break; sleep 0.5; done
 [[ -f "$mount/.DS_Store" ]] || { echo "error: Finder did not save the window layout" >&2; exit 1; }
+# The volume icon: .VolumeIcon.icns plus the custom-icon flag on the root. Both after the layout:
+# a copy in the staging folder did not reach the image, and Finder clears the flag while it lays
+# out the window.
+cp Resources/AppIcon.icns "$mount/.VolumeIcon.icns"
+SetFile -a C "$mount"
 chmod -Rf go-w "$mount" 2>/dev/null || true
 sync
 hdiutil detach -quiet "$device"
@@ -76,4 +82,5 @@ device=""
 
 rm -f "$dmg"
 hdiutil convert -quiet "$rw" -format UDZO -imagekey zlib-level=9 -o "$dmg"
+scripts/set-file-icon.sh "$dmg"
 echo "    $dmg"
