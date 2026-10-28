@@ -221,6 +221,14 @@ import Testing
     #expect(dto.remoteInput)
   }
 
+  /// Tailscale answered last time (stored first), but the phone is back on the LAN.
+  @Test func lanAddressesAreTriedBeforeTailscale() {
+    #expect(
+      RemoteAddressRange.preferringLAN(["100.99.45.54", "192.168.2.10", "fd7a:115c:a1e0::2a3a:2d36", "10.0.12.25"])
+        == ["192.168.2.10", "10.0.12.25", "100.99.45.54", "fd7a:115c:a1e0::2a3a:2d36"])
+    #expect(!RemoteAddressRange.isTailscale("100.128.0.1") && RemoteAddressRange.isTailscale("100.127.255.254"))
+  }
+
   @Test func pairingLinkRoundTrips() throws {
     let payload = PairingPayload(serverName: "Mac", hosts: ["192.168.1.2", "100.100.1.1"], port: 47821, fingerprint: "ab", code: "ABCD2345")
     #expect(try PairingPayload(url: payload.url) == payload)
