@@ -261,6 +261,11 @@ struct UsageView: View {
   }
 
   /// Top entries with a bar proportional to the largest; the rest folded into "其他".
+  /// "1.8M · 命中 92.3%"
+  private func rankingValue(_ usage: TokenUsage) -> String {
+    UsageReport.format(usage.total) + (usage.cacheHitRate.map { " · 命中 \(UsageReport.percent($0))" } ?? "")
+  }
+
   private func ranking(_ entries: [(name: String, usage: TokenUsage)]) -> some View {
     let limit = 8
     var shown = Array(entries.prefix(limit))
@@ -275,7 +280,7 @@ struct UsageView: View {
           HStack {
             Text(entry.name).font(.caption).lineLimit(1).truncationMode(.middle)
             Spacer()
-            Text(UsageReport.format(entry.usage.total)).font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary)
+            Text(rankingValue(entry.usage)).font(.caption.monospacedDigit()).foregroundStyle(Theme.textSecondary)
           }
           GeometryReader { geometry in
             Capsule().fill(Theme.blue.opacity(0.75))
