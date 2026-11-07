@@ -12,6 +12,16 @@ public struct ClaudeSessionFile: Sendable {
   public var statusUpdatedAt: Date?
   public var diagnostics: [String] = []
 
+  /// Whether a turn runs: `busy` → true; `idle` and `shell` (idle, a background shell still
+  /// running) → false; anything else unknown.
+  public var turnRunning: Bool? {
+    switch status {
+    case "busy": true
+    case "idle", "shell": false
+    default: nil
+    }
+  }
+
   public static func parse(_ data: Data) throws -> ClaudeSessionFile {
     let json = try JSONDecoder().decode(JSONValue.self, from: data)
     guard let number = json["pid"]?.number, number > 0, number <= Double(Int32.max),

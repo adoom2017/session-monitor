@@ -218,6 +218,9 @@ import Observation
     } catch { report(error, context: "按 rollout 修正会话状态失败") }
   }
 
+  /// How long hooks must be quiet before the Claude session file may correct the state.
+  static let hookQuietSeconds: TimeInterval = 3
+
   public func reconcile(files: [ClaudeSessionFile], liveness: [Int32: Bool], now: Date) {
     for file in files {
       guard liveness[file.pid] == true else { continue }
@@ -228,8 +231,7 @@ import Observation
           type: .sessionStart(reason: nil))
         var created = Session(event: event)
         created.source = .sessionFileOnly
-        created.state =
-          file.status == "busy" ? .working : (file.status == "idle" ? .idle : .unknown)
+        created.state = file.turnRunning.map { $0 ? .working : .idle } ?? .unknown
         byID[id] = created
         recordDiagnostic("会话 \(file.pid) 尚无 hook 事件，已使用会话文件补建；权限等待状态无法由文件判断。")
       }
@@ -252,14 +254,18 @@ import Observation
       if let tmux = file.tmux { s.terminal.tmuxPane = tmux }
       s.terminal.entrypoint = file.entrypoint
       s.rawStatus = file.status
-      if let updatedAt = file.statusUpdatedAt, updatedAt > s.lastEventAt.addingTimeInterval(3) {
-        if file.status == "idle", s.state == .working {
+      // Esc interrupts fire no hook, often within a second of the last one: any file status newer
+      // than the last hook counts, once hooks have been quiet long enough to have caught up.
+      if let updatedAt = file.statusUpdatedAt, updatedAt > s.lastEventAt,
+        now.timeIntervalSince(s.lastEventAt) >= Self.hookQuietSeconds
+      {
+        if file.turnRunning == false, s.state == .working {
           s.state = .done
           s.unread = true
           s.stateSince = now
           s.currentTool = nil
           recordDiagnostic("会话 \(file.pid) 的 hook 状态已过期；根据较新的会话文件修正为完成。")
-        } else if file.status == "busy", s.state == .idle || s.state == .done {
+        } else if file.turnRunning == true, s.state == .idle || s.state == .done {
           s.state = .working
           s.stateSince = now
           s.attentionMessage = nil

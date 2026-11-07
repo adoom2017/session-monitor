@@ -90,6 +90,29 @@ import Testing
     #expect(store.sessions.first?.state == .needsPermission)
   }
 
+  /// Esc 1.5s after the prompt (reproduced with Claude Code 2.1.319): no hook, only the file goes idle.
+  @Test @MainActor func escInterruptSoonAfterLastHookEndsTheTurn() throws {
+    let store = SessionStore()
+    let prompt = Date(timeIntervalSince1970: 1000)
+    try store.apply(AgentEvent(sessionId: "id", agentPid: 42, at: prompt, type: .promptSubmitted))
+    let idle = try ClaudeSessionFile.parse(
+      Data(#"{"pid":42,"sessionId":"id","status":"idle","statusUpdatedAt":1001500}"#.utf8))
+    store.reconcile(files: [idle], liveness: [42: true], now: prompt.addingTimeInterval(2))
+    #expect(store.sessions.first?.state == .working)
+    store.reconcile(files: [idle], liveness: [42: true], now: prompt.addingTimeInterval(4))
+    #expect(store.sessions.first?.state == .done)
+  }
+
+  @Test @MainActor func shellStatusCountsAsIdle() throws {
+    let store = SessionStore()
+    let prompt = Date(timeIntervalSince1970: 1000)
+    try store.apply(AgentEvent(sessionId: "id", agentPid: 42, at: prompt, type: .promptSubmitted))
+    let shell = try ClaudeSessionFile.parse(
+      Data(#"{"pid":42,"sessionId":"id","status":"shell","statusUpdatedAt":1005000}"#.utf8))
+    store.reconcile(files: [shell], liveness: [42: true], now: prompt.addingTimeInterval(6))
+    #expect(store.sessions.first?.state == .done)
+  }
+
   @Test func absentSocketReportsError() {
     #expect(throws: MonitorError.self) {
       try SocketClient.send(Data("{}".utf8), to: "/tmp/\(UUID().uuidString).sock")
