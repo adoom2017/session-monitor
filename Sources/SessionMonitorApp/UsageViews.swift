@@ -111,7 +111,7 @@ struct UsageView: View {
           section("按模型") { ranking(UsageReport.ranking(selected, by: \.model)) }
           section("按项目") { ranking(UsageReport.ranking(selected, by: \.project)) }
         }
-        Text("统计本机全部 Claude Code 与 Codex 会话记录（含 \(AppInfo.name) 未运行期间的会话），按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出。")
+        Text("统计本机全部 Claude Code 与 Codex 会话记录（含 \(AppInfo.name) 未运行期间的会话），按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出；缓存命中率 = 缓存读 ÷ 全部输入。")
           .font(.caption).foregroundStyle(Theme.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -245,15 +245,15 @@ struct UsageView: View {
   }
 
   private func breakdown(_ usage: TokenUsage) -> some View {
-    let items: [(String, Int)] = [
+    let items: [(String, String)] = [
       ("总量", usage.total), ("输入", usage.input), ("缓存读", usage.cacheRead), ("缓存写", usage.cacheWrite),
       ("输出", usage.output), ("其中思考", usage.reasoning),
-    ]
+    ].map { ($0.0, UsageReport.format($0.1)) } + [("缓存命中率", UsageReport.percent(usage.cacheHitRate))]
     return HStack(spacing: 0) {
       ForEach(items, id: \.0) { item in
         VStack(alignment: .leading, spacing: 2) {
           Text(item.0).font(.caption).foregroundStyle(Theme.textSecondary)
-          Text(UsageReport.format(item.1)).font(.body.weight(.medium).monospacedDigit())
+          Text(item.1).font(.body.weight(.medium).monospacedDigit())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
       }

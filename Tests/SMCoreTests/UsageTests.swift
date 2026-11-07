@@ -133,6 +133,8 @@ import Testing
     #expect(UsageReport.format(24_600) == "24.6k")
     #expect(UsageReport.format(1_840_000) == "1.8M")
     #expect(UsageReport.format(2_310_000_000) == "2.31B")
+    #expect(UsageReport.percent(TokenUsage(input: 100, cacheRead: 700, cacheWrite: 200, output: 50).cacheHitRate) == "70.0%")
+    #expect(UsageReport.percent(TokenUsage(output: 50).cacheHitRate) == "—")
   }
 
   /// Opt-in timing against this Mac's real logs: SM_USAGE_REAL=1 swift test --filter realLogs

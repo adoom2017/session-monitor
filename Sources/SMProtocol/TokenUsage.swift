@@ -21,6 +21,11 @@ public struct TokenUsage: Codable, Sendable, Equatable, Hashable {
 
   public var total: Int { input + cacheRead + cacheWrite + output }
   public var isZero: Bool { self == TokenUsage() }
+  /// Share of all input served from the cache; nil without any input.
+  public var cacheHitRate: Double? {
+    let input = input + cacheRead + cacheWrite
+    return input > 0 ? Double(cacheRead) / Double(input) : nil
+  }
 
   public static func + (a: Self, b: Self) -> Self {
     Self(
@@ -116,10 +121,16 @@ public enum UsageReport {
     }
   }
 
-  /// "输入 1.2M · 缓存读 21.0M · 缓存写 1.9M · 输出 0.5M（思考 0.1M）"
+  /// 0.9234 → "92.3%", nil → "—".
+  public static func percent(_ rate: Double?) -> String {
+    rate.map { String(format: "%.1f%%", $0 * 100) } ?? "—"
+  }
+
+  /// "输入 1.2M · 缓存读 21.0M · 缓存写 1.9M · 输出 0.5M（思考 0.1M）· 缓存命中 87.5%"
   public static func breakdown(_ usage: TokenUsage) -> String {
     var text = "输入 \(format(usage.input)) · 缓存读 \(format(usage.cacheRead)) · 缓存写 \(format(usage.cacheWrite)) · 输出 \(format(usage.output))"
     if usage.reasoning > 0 { text += "（思考 \(format(usage.reasoning))）" }
+    if let rate = usage.cacheHitRate { text += " · 缓存命中 \(percent(rate))" }
     return text
   }
 }
