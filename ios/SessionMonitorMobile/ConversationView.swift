@@ -10,6 +10,7 @@ struct ConversationView: View {
   let live: LiveOutput?
   let loadOlder: () -> Void
   @State private var followBottom = true
+  @State private var userScrolling = false
 
   var body: some View {
     if let entries {
@@ -30,15 +31,20 @@ struct ConversationView: View {
               ForEach(entries) { EntryView(entry: $0).id($0.id) }
               if let live { LiveCard(live: live).id("live") }
               Color.clear.frame(height: 1).id("bottom")
-                .onAppear { followBottom = true }
-                .onDisappear { followBottom = false }
             }
             .padding(.horizontal, 14).padding(.vertical, 10)
           }
           .defaultScrollAnchor(.bottom)
-          // Keep following new output only while the reader is at the bottom.
-          .onChange(of: entries.last?.id) { _, _ in
-            if followBottom { withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+          // Rows render taller or shorter than the lazy stack estimated, so the opening position
+          // drifts off the bottom; while following, every size change goes back there. Only the
+          // reader's own scrolling stops or resumes following, not content pushing the end away.
+          .onScrollPhaseChange { _, phase in userScrolling = phase == .interacting || phase == .decelerating }
+          .onScrollGeometryChange(for: ScrollGeometry.self, of: { $0 }) { old, new in
+            if userScrolling {
+              followBottom = new.visibleRect.maxY >= new.contentSize.height - 24
+            } else if followBottom, old.contentSize.height != new.contentSize.height {
+              proxy.scrollTo("bottom", anchor: .bottom)
+            }
           }
           // An older page went in above: stay on the entry being read instead of the top,
           // which also moves the spinner off screen.
@@ -46,9 +52,6 @@ struct ConversationView: View {
             if let previous, entries.contains(where: { $0.id == previous }) {
               proxy.scrollTo(previous, anchor: .top)
             }
-          }
-          .onChange(of: live?.text) { _, _ in
-            if followBottom { proxy.scrollTo("bottom", anchor: .bottom) }
           }
         }
       }
