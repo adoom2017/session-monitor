@@ -102,6 +102,7 @@ public enum TranscriptParser {
     switch kind {
     case .claude: return claude(json, at: at, offset: offset)
     case .codex: return codex(json, at: at, offset: offset)
+    case .pi: return pi(json, at: at, offset: offset)
     }
   }
 
@@ -217,6 +218,66 @@ public enum TranscriptParser {
     }
   }
 
+  /// Pi stores every entry as `type: "message"` / `role`: user, assistant (text, thinking,
+  /// toolCall blocks) or toolResult. System messages carry the prompt and are not conversation.
+  static func pi(_ json: JSONValue, at: Date?, offset: UInt64) -> [TranscriptEntry] {
+    guard json["type"]?.string == "message", let message = json["message"],
+      let role = message["role"]?.string
+    else { return [] }
+    let base = json["id"]?.string ?? "p\(offset)"
+    let content = message["content"]
+    if role == "user" {
+      if let text = content?.string {
+        return isConversational(text) ? [TranscriptEntry(id: base, role: .user, text: text, at: at)] : []
+      }
+      return (content?.array ?? []).enumerated().compactMap { index, item in
+        guard item["type"]?.string == "text", let text = item["text"]?.string,
+          isConversational(text)
+        else { return nil }
+        return TranscriptEntry(id: "\(base)-\(index)", role: .user, text: text, at: at)
+      }
+    }
+    if role == "assistant" {
+      if let text = content?.string {
+        return text.isEmpty ? [] : [TranscriptEntry(id: base, role: .assistant, text: text, at: at)]
+      }
+      var result: [TranscriptEntry] = []
+      for (index, item) in (content?.array ?? []).enumerated() {
+        let id = "\(base)-\(index)"
+        switch item["type"]?.string {
+        case "text":
+          guard let text = item["text"]?.string, !text.isEmpty else { continue }
+          result.append(TranscriptEntry(id: id, role: .assistant, text: text, at: at))
+        case "thinking":
+          guard let text = item["thinking"]?.string, !text.isEmpty else { continue }
+          result.append(TranscriptEntry(id: id, role: .thinking, text: text, at: at))
+        case "toolCall":
+          let name = item["name"]?.string ?? "tool"
+          let arguments = item["arguments"]
+          let summary = arguments?.string.map { singleLine($0, limit: 200) } ?? toolSummary(arguments)
+          result.append(
+            TranscriptEntry(
+              id: id, role: .tool, text: summary.map { "\(name): \($0)" } ?? name,
+              detail: arguments.map { clipped(pretty($0)) }, at: at))
+        default: continue
+        }
+      }
+      return result
+    }
+    if role == "toolResult" {
+      let output = toolResultText(content)
+      let failed = message["isError"]?.bool == true
+      return [
+        TranscriptEntry(
+          id: base, role: .toolResult,
+          text: (failed ? "失败：" : "")
+            + (output.split(separator: "\n").first.map(String.init) ?? "（无输出）"),
+          detail: output.isEmpty ? nil : clipped(output), at: at)
+      ]
+    }
+    return []
+  }
+
   /// Injected context (AGENTS.md, environment, command wrappers) starts with a tag or heading
   /// marker and is not something the user typed.
   static func isConversational(_ text: String) -> Bool {
@@ -226,7 +287,7 @@ public enum TranscriptParser {
 
   static func toolSummary(_ input: JSONValue?) -> String? {
     guard let input else { return nil }
-    for key in ["command", "file_path", "pattern", "url", "description", "prompt", "query"] {
+    for key in ["command", "file_path", "path", "pattern", "url", "description", "prompt", "query"] {
       if let value = input[key]?.string, !value.isEmpty { return singleLine(value, limit: 200) }
     }
     return nil

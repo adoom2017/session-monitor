@@ -206,6 +206,47 @@ import Observation
     byID[id] = s
   }
 
+
+  /// A running Pi TUI found by process scan. Same logic as upsertScannedCodex.
+  public func upsertScannedPi(
+    _ process: PiProcess, session: PiSessionIndex.Match?, tmuxPane: String?, now: Date
+  ) {
+    let id = Session.key(kind: .pi, pid: process.pid, sessionId: "")
+    if byID[id] == nil {
+      var created = Session(
+        event: AgentEvent(
+          kind: .pi, sessionId: session?.sessionID ?? "\(Self.pendingSessionPrefix)\(process.pid)",
+          agentPid: process.pid, cwd: process.cwd, transcriptPath: session?.path, at: now,
+          type: .sessionStart(reason: nil),
+          terminal: TerminalInfo(tmuxPane: tmuxPane, tty: process.tty)))
+      created.source = .processScan
+      created.state = .idle
+      byID[id] = created
+      recordDiagnostic("发现运行中的 Pi 会话 \(process.pid)（\(created.projectName)），等待其 hook 事件。")
+      return
+    }
+    guard var s = byID[id] else { return }
+    if s.state == .ended {
+      var terminal = s.terminal; terminal.tty = process.tty
+      if let tmuxPane { terminal.tmuxPane = tmuxPane }
+      var created = Session(
+        event: AgentEvent(
+          kind: .pi, sessionId: "\(Self.pendingSessionPrefix)\(process.pid)",
+          agentPid: process.pid, cwd: process.cwd, at: now, type: .sessionStart(reason: nil),
+          terminal: terminal))
+      created.source = .processScan; created.state = .idle; byID[id] = created
+      recordDiagnostic("Pi 会话 \(process.pid) 结束了上一个对话但仍在运行，等待新会话的 hook 事件。")
+      return
+    }
+    if s.terminal.tty == nil { s.terminal.tty = process.tty }
+    if s.terminal.tmuxPane == nil, let tmuxPane { s.terminal.tmuxPane = tmuxPane }
+    if s.currentSessionId.hasPrefix(Self.pendingSessionPrefix), let session {
+      s.currentSessionId = session.sessionID
+      s.transcriptPath = session.path
+    }
+    byID[id] = s
+  }
+
   /// A turn ended without a hook (Codex Esc interrupt) or its Stop was missed; the rollout says so.
   public func applyExternalTurnEnd(id: String, aborted: Bool, at: Date) {
     guard let s = byID[id] else { return }

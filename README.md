@@ -2,7 +2,7 @@
 
 ## 使用说明
 
-码哨（英文名 Codewhistle，原名 SessionMonitor）是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code 和 Codex 会话状态，并配有 iPhone App。App 名称随系统语言显示为"码哨"或"Codewhistle"；应用文件为 `Codewhistle.app`（访达只有在文件名与英文名一致时才会显示中文名"码哨"）。
+码哨（英文名 Codewhistle，原名 SessionMonitor）是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code、Codex 和 Pi 会话状态，并配有 iPhone App。App 名称随系统语言显示为"码哨"或"Codewhistle"；应用文件为 `Codewhistle.app`（访达只有在文件名与英文名一致时才会显示中文名"码哨"）。
 
 <table>
   <tr>
@@ -22,6 +22,7 @@
 1. 将 `Codewhistle.app` 放入 `/Applications`，然后启动。从旧版本升级时，先退出并删除原来的 `SessionMonitor.app`；配对、hook 和设置会保留。
 2. 点击菜单栏图标 → **设置…** → **集成**，为需要监控的 Claude Code 或 Codex 点击 **安装**。
 3. 使用 Codex 时，在 Codex 会话中输入 `/hooks`，批准码哨（sm-hook）的条目；安装后重启已打开的 Codex 会话。
+   使用 Pi 时，安装会写入扩展 `~/.pi/agent/extensions/codewhistle.ts`；已打开的 Pi 会话输入 `/reload` 或重启后生效。Pi 没有权限确认，所以不会出现"需要授权"状态。
 4. 允许系统通知。需要调整权限时，打开 **系统设置 → 通知 → 码哨**。
 
 安装 hook 会保留其他工具的配置，并在修改前备份到 `~/.session-monitor/backups/`。App 更新后会自动同步已安装的 hook 程序。

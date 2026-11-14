@@ -4,7 +4,7 @@ import SMCore
 
 do {
   guard CommandLine.arguments.count == 2, let kind = AgentKind(rawValue: CommandLine.arguments[1])
-  else { throw MonitorError.invalid("usage: sm-hook <claude|codex>") }
+  else { throw MonitorError.invalid("usage: sm-hook <claude|codex|pi>") }
   let home: URL
   if let configured = ProcessInfo.processInfo.environment["HOME"] {
     home = URL(fileURLWithPath: configured, isDirectory: true)

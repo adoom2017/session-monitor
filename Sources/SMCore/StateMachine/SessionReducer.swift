@@ -114,6 +114,7 @@ public enum SessionReducer {
       s.unread = true
       s.currentTool = nil
       s.attentionMessage = nil
+      if s.kind == .pi { s.lastAssistantSnippet = nil }
       if let message = event.assistantMessage, !message.isEmpty {
         s.lastAssistantSnippet = singleLine(plainText(message), limit: 120)
       }

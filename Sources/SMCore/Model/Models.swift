@@ -92,7 +92,18 @@ public enum JSONValue: Codable, Sendable, Equatable {
   }
 }
 
-public enum AgentKind: String, Codable, Sendable { case claude, codex }
+public enum AgentKind: String, Codable, Sendable {
+  case claude, codex, pi
+
+  /// Shown in the panel badge, menus and notifications.
+  public var displayName: String {
+    switch self {
+    case .claude: "Claude"
+    case .codex: "Codex"
+    case .pi: "Pi"
+    }
+  }
+}
 public enum SessionState: String, Codable, Sendable {
   case working, needsPermission, needsInput, done, idle, ended, unknown
 }

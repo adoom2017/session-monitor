@@ -33,6 +33,7 @@ public final class UsageLedger: @unchecked Sendable {
       (.claude, home.appendingPathComponent(".claude/projects")),
       (.codex, home.appendingPathComponent(".codex/sessions")),
       (.codex, home.appendingPathComponent(".codex/archived_sessions")),
+      (.pi, home.appendingPathComponent(".pi/agent/sessions")),
     ]
     if let data = FileManager.default.contents(atPath: cache.path),
       let decoded = try? JSONDecoder().decode(Stored.self, from: data), decoded.version == Self.version
@@ -60,7 +61,7 @@ public final class UsageLedger: @unchecked Sendable {
     lock.withLock {
       var totals: [String: TokenUsage] = [:]
       for (key, entry) in stored.files {
-        let agent = key.hasPrefix("codex/") ? "codex" : "claude"
+        let agent = key.hasPrefix("codex/") ? "codex" : (key.hasPrefix("pi/") ? "pi" : "claude")
         for (bucket, usage) in entry.buckets { totals[agent + "|" + bucket, default: TokenUsage()] += usage }
       }
       return totals.compactMap { key, usage in

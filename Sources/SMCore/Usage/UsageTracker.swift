@@ -21,10 +21,12 @@ public actor UsageTracker {
     var result: [String: SessionUsage] = [:]
     meters = meters.filter { id, _ in sessions.contains { $0.id == id } }
     for session in sessions {
-      let located =
-        session.kind == .claude
-        ? try? ClaudeSource.transcript(of: session, home: home)
-        : session.transcriptPath.map { URL(fileURLWithPath: $0) }
+      let located: URL?
+      switch session.kind {
+      case .claude: located = try? ClaudeSource.transcript(of: session, home: home)
+      case .codex: located = session.transcriptPath.map { URL(fileURLWithPath: $0) }
+      case .pi: located = try? PiSource.transcript(of: session, home: home)
+      }
       guard let url = located, FileManager.default.fileExists(atPath: url.path) else {
         meters.removeValue(forKey: session.id)
         continue

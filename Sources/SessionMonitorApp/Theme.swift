@@ -1,4 +1,5 @@
 import AppKit
+import SMCore
 import SwiftUI
 
 /// Design tokens of the "midnight liquid glass" style (see docs/DESIGN.md): Apple SF system
@@ -21,6 +22,16 @@ enum Theme {
   /// readable lightness band and stay apart for color-blind readers (validated in both modes).
   static let chartClaude = dynamic(light: 0x5856D6, dark: 0x7A78EA)
   static let chartCodex = dynamic(light: 0x00897B, dark: 0x1F9E8F)
+  static let chartPi = dynamic(light: 0xB85C00, dark: 0xE08A2E)
+
+  /// Badge color of each agent.
+  static func agent(_ kind: AgentKind) -> Color {
+    switch kind {
+    case .claude: indigo
+    case .codex: cyan
+    case .pi: purple
+    }
+  }
 
   /// Tint laid over the material, and the solid raised surface (tip bar, reduced transparency).
   static let canvas = dynamic(light: 0xF7F9FC, dark: 0x090C15)

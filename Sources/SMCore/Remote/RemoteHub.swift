@@ -296,9 +296,12 @@ import SMProtocol
   private func openTranscript(_ id: String, for client: Client) {
     let peer = client.peer
     guard let session = session(publicID: id) else { return peer.send(.error(message: "会话不存在")) }
-    let located = session.kind == .claude
-      ? try? ClaudeSource.transcript(of: session)
-      : session.transcriptPath.map { URL(fileURLWithPath: $0) }
+    let located: URL?
+    switch session.kind {
+    case .claude: located = try? ClaudeSource.transcript(of: session)
+    case .codex: located = session.transcriptPath.map { URL(fileURLWithPath: $0) }
+    case .pi: located = try? PiSource.transcript(of: session)
+    }
     // A new session's hooks name the transcript before its first prompt creates the file.
     guard let url = located, FileManager.default.fileExists(atPath: url.path) else {
       // Not written yet; keep the subscription so the thread check retries (announced once).

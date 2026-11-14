@@ -5,7 +5,7 @@ import Foundation
 /// installs, so those uninstall cleanly too. Back up first, add only our entries (other tools' hooks and key order are kept), write
 /// atomically, verify, roll back on failure; uninstall restores the original semantics exactly.
 public struct HookInstaller: Sendable {
-  public enum Agent: String, Sendable, CaseIterable { case claude, codex }
+  public enum Agent: String, Sendable, CaseIterable { case claude, codex, pi }
 
   public enum Status: Equatable, Sendable {
     case notInstalled
@@ -36,19 +36,43 @@ public struct HookInstaller: Sendable {
 
   var runtime: URL { home.appendingPathComponent(".session-monitor") }
   public var configURL: URL {
-    home.appendingPathComponent(agent == .claude ? ".claude/settings.json" : ".codex/hooks.json")
+    switch agent {
+    case .claude: home.appendingPathComponent(".claude/settings.json")
+    case .codex: home.appendingPathComponent(".codex/hooks.json")
+    // Pi has no hooks file: an auto-discovered extension forwards its lifecycle events.
+    case .pi: home.appendingPathComponent(".pi/agent/extensions/codewhistle.ts")
+    }
   }
   var manifestURL: URL {
-    runtime.appendingPathComponent(
-      agent == .claude ? "hook-installation.json" : "hook-installation-codex.json")
+    let name: String
+    switch agent {
+    case .claude: name = "hook-installation.json"
+    case .codex: name = "hook-installation-codex.json"
+    case .pi: name = "hook-installation-pi.json"  // unused: the extension is the whole install
+    }
+    return runtime.appendingPathComponent(name)
   }
   public var hookBinaryURL: URL { runtime.appendingPathComponent("bin/sm-hook") }
-  var events: [String] { agent == .claude ? Self.claudeEvents : Self.codexEvents }
+  var events: [String] {
+    switch agent {
+    case .claude: Self.claudeEvents
+    case .codex: Self.codexEvents
+    case .pi: []
+    }
+  }
   var command: String { Self.shellQuote(hookBinaryURL.path) + " " + agent.rawValue }
 
   // MARK: Status
 
   public func status() -> Status {
+    if agent == .pi {
+      guard FileManager.default.fileExists(atPath: configURL.path) else { return .notInstalled }
+      guard let text = try? String(contentsOf: configURL, encoding: .utf8) else {
+        return .unreadable("无法读取 \(configURL.path)")
+      }
+      return text.contains(PiExtension.marker)
+        ? .installed : .unreadable("同名扩展不是码哨安装的，未改动：\(configURL.path)")
+    }
     guard FileManager.default.fileExists(atPath: configURL.path) else { return .notInstalled }
     do {
       let root = try OrderedJSON.parse(Data(contentsOf: configURL))
@@ -107,7 +131,11 @@ public struct HookInstaller: Sendable {
   /// Returns the backup file of the previous config.
   @discardableResult
   public func install(bundledHook: URL) throws -> URL {
-    try edit { root, hooks, _ in
+    if agent == .pi {
+      try installBinary(from: bundledHook)
+      return try installExtension()
+    }
+    return try edit { root, hooks, _ in
       try installBinary(from: bundledHook)
       var entry: [(String, OrderedJSON)] = [("type", .string("command")), ("command", .string(command))]
       if agent == .claude { entry.append(("timeout", .number("5"))) }
@@ -124,6 +152,7 @@ public struct HookInstaller: Sendable {
 
   @discardableResult
   public func uninstall() throws -> URL {
+    if agent == .pi { return try uninstallExtension() }
     let backup = try edit(uninstalling: true) { _, hooks, _ in
       guard let pairs = hooks.objectPairs else { return }
       for (event, groups) in pairs {
@@ -142,13 +171,59 @@ public struct HookInstaller: Sendable {
         hooks.set(event, kept.isEmpty ? nil : .array(kept))
       }
     }
-    // The binary is shared: keep it while the other agent's hooks still use it.
-    let otherManifest = HookInstaller(agent: agent == .claude ? .codex : .claude, home: home).manifestURL
-    if FileManager.default.fileExists(atPath: hookBinaryURL.path),
-      !FileManager.default.fileExists(atPath: otherManifest.path)
-    {
-      try FileManager.default.removeItem(at: hookBinaryURL)
+    removeSharedBinaryIfUnused()
+    return backup
+  }
+
+  /// The binary is shared by every agent: keep it while another install still uses it.
+  private func removeSharedBinaryIfUnused() {
+    let inUse = Agent.allCases.contains { other in
+      other != agent && HookInstaller(agent: other, home: home).status() != .notInstalled
     }
+    if !inUse, FileManager.default.fileExists(atPath: hookBinaryURL.path) {
+      try? FileManager.default.removeItem(at: hookBinaryURL)
+    }
+  }
+
+  // MARK: Pi extension
+
+  private func installExtension() throws -> URL {
+    let fm = FileManager.default
+    let existed = fm.fileExists(atPath: configURL.path)
+    let original = existed ? try Data(contentsOf: configURL) : Data()
+    if existed, !String(decoding: original, as: UTF8.self).contains(PiExtension.marker) {
+      throw MonitorError.invalid("\(configURL.path) 已存在且不是码哨安装的扩展，未改动")
+    }
+    let backup = try writeBackup(original, existed: existed)
+    let data = Data(PiExtension.source.utf8)
+    do {
+      try fm.createDirectory(
+        at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true,
+        attributes: [.posixPermissions: 0o700])
+      try data.write(to: configURL, options: .atomic)
+      try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configURL.path)
+      guard try Data(contentsOf: configURL) == data else {
+        throw MonitorError.invalid("扩展写入后回读不一致")
+      }
+    } catch {
+      if existed { try? original.write(to: configURL, options: .atomic) } else {
+        try? fm.removeItem(at: configURL)
+      }
+      throw error
+    }
+    return backup
+  }
+
+  private func uninstallExtension() throws -> URL {
+    let fm = FileManager.default
+    let existed = fm.fileExists(atPath: configURL.path)
+    let original = existed ? try Data(contentsOf: configURL) : Data()
+    if existed, !String(decoding: original, as: UTF8.self).contains(PiExtension.marker) {
+      throw MonitorError.invalid("\(configURL.path) 不是码哨安装的扩展，未改动")
+    }
+    let backup = try writeBackup(original, existed: existed)
+    if existed { try fm.removeItem(at: configURL) }
+    removeSharedBinaryIfUnused()
     return backup
   }
 
@@ -157,11 +232,22 @@ public struct HookInstaller: Sendable {
   @discardableResult
   public func syncBinary(from bundledHook: URL) throws -> Bool {
     guard FileManager.default.fileExists(atPath: hookBinaryURL.path) else { return false }
+    var replaced = false
     let installed = try Data(contentsOf: hookBinaryURL)
     let bundled = try Data(contentsOf: bundledHook)
-    guard installed != bundled else { return false }
-    try installBinary(from: bundledHook)
-    return true
+    if installed != bundled {
+      try installBinary(from: bundledHook)
+      replaced = true
+    }
+    if agent == .pi, FileManager.default.fileExists(atPath: configURL.path),
+      let current = try? Data(contentsOf: configURL),
+      String(decoding: current, as: UTF8.self).contains(PiExtension.marker),
+      current != Data(PiExtension.source.utf8)
+    {
+      _ = try installExtension()
+      replaced = true
+    }
+    return replaced
   }
 
   private func installBinary(from source: URL) throws {
@@ -210,16 +296,7 @@ public struct HookInstaller: Sendable {
       manifest = try JSONDecoder().decode(Manifest.self, from: data)
     }
 
-    try fm.createDirectory(at: runtime, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    let backups = runtime.appendingPathComponent("backups")
-    try fm.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "")
-    let backup = backups.appendingPathComponent(
-      "\(configURL.lastPathComponent).\(agent.rawValue).\(stamp)-\(UUID().uuidString.prefix(4))"
-        + (existed ? "" : ".missing"))
-    try (existed ? original : Data("\(configURL.lastPathComponent) did not exist\n".utf8))
-      .write(to: backup, options: [.withoutOverwriting])
-    try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+    let backup = try writeBackup(original, existed: existed)
 
     if !uninstalling, manifest == nil {
       let created = Manifest(hadHooks: hadHooks, existed: existed)
@@ -256,6 +333,22 @@ public struct HookInstaller: Sendable {
       }
       throw error
     }
+    return backup
+  }
+
+  /// Backs up the current config (or records that it was missing) before any change.
+  private func writeBackup(_ original: Data, existed: Bool) throws -> URL {
+    let fm = FileManager.default
+    try fm.createDirectory(at: runtime, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    let backups = runtime.appendingPathComponent("backups")
+    try fm.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "")
+    let backup = backups.appendingPathComponent(
+      "\(configURL.lastPathComponent).\(agent.rawValue).\(stamp)-\(UUID().uuidString.prefix(4))"
+        + (existed ? "" : ".missing"))
+    try (existed ? original : Data("\(configURL.lastPathComponent) did not exist\n".utf8))
+      .write(to: backup, options: [.withoutOverwriting])
+    try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
     return backup
   }
 

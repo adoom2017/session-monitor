@@ -23,6 +23,8 @@ enum Theme {
   /// Usage chart series, as on the Mac (validated for both modes and color blindness).
   static let chartClaude = dynamic(light: 0x5856D6, dark: 0x7A78EA)
   static let chartCodex = dynamic(light: 0x00897B, dark: 0x1F9E8F)
+  static let chartPi = dynamic(light: 0xB85C00, dark: 0xE08A2E)
+  static let purple = dynamic(light: 0x8944AB, dark: 0xBF5AF2)
   static let textSecondary = dynamic(light: 0x5B6475, dark: 0x98A2B3)
   static let canvas = dynamic(light: 0xF7F9FC, dark: 0x090C15)
   static let raised = dynamic(light: 0xFFFFFF, dark: 0x111727)
@@ -80,8 +82,20 @@ extension RemoteSession {
     default: stateLabel
     }
   }
-  var agentLabel: String { agent == "codex" ? "Codex" : "Claude" }
-  var agentColor: Color { agent == "codex" ? Theme.cyan : Theme.indigo }
+  var agentLabel: String {
+    switch agent {
+    case "codex": "Codex"
+    case "pi": "Pi"
+    default: "Claude"
+    }
+  }
+  var agentColor: Color {
+    switch agent {
+    case "codex": Theme.cyan
+    case "pi": Theme.purple
+    default: Theme.indigo
+    }
+  }
 }
 
 /// Tinted capsule label, as on the Mac.

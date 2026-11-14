@@ -116,7 +116,7 @@ import SwiftUI
     }
     for session in store.sessions {
       let item = NSMenuItem(
-        title: "\(session.stateLabel) · [\(session.kind == .codex ? "Codex" : "Claude")] \(session.displayName)",
+        title: "\(session.stateLabel) · [\(session.kind.displayName)] \(session.displayName)",
         action: #selector(menuJump(_:)),
         keyEquivalent: "")
       item.target = self

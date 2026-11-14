@@ -140,6 +140,7 @@ struct IntegrationSettings: View {
       Section {
         hookRow(.claude, name: "Claude Code", folder: ".claude")
         hookRow(.codex, name: "Codex", folder: ".codex")
+        hookRow(.pi, name: "Pi", folder: ".pi")
       } header: {
         Text("Hook")
       } footer: {
@@ -169,7 +170,7 @@ struct IntegrationSettings: View {
     .settingsPage()
     .onWindowFocus(refresh)
     .confirmationDialog(
-      "卸载 \(confirmUninstall == .codex ? "Codex" : "Claude Code") 的 hook？",
+      "卸载 \(confirmUninstall.map(Self.name) ?? "") 的 hook？",
       isPresented: Binding(get: { confirmUninstall != nil }, set: { if !$0 { confirmUninstall = nil } })
     ) {
       Button("卸载", role: .destructive) {
@@ -177,6 +178,14 @@ struct IntegrationSettings: View {
       }
     } message: {
       Text("只移除 \(AppInfo.name) 自己的条目，其他 hook 不受影响。卸载后该工具的会话只能显示忙/闲。")
+    }
+  }
+
+  static func name(_ agent: HookInstaller.Agent) -> String {
+    switch agent {
+    case .claude: "Claude Code"
+    case .codex: "Codex"
+    case .pi: "Pi"
     }
   }
 

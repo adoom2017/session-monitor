@@ -33,6 +33,8 @@ public struct UsageReader: Codable, Sendable, Equatable {
   private var unattributed: [Unattributed] = []
   /// Claude messages counted most recently, to fold their repeated lines.
   private var recent: [Recent] = []
+  /// Home directory for Pi's models.json (nil in ledgers written before Pi support existed).
+  private var home: URL?
 
   struct Unattributed: Codable, Sendable, Equatable {
     var at: Date?
@@ -50,7 +52,10 @@ public struct UsageReader: Codable, Sendable, Equatable {
   static let recentLimit = 16
   static let chunkSize = 4 << 20
 
-  public init(kind: AgentKind) { self.kind = kind }
+  public init(kind: AgentKind, home: URL = FileManager.default.homeDirectoryForCurrentUser) {
+    self.kind = kind
+    self.home = home
+  }
 
   /// Context window in tokens for a Claude model. Claude 5 models (and `[1m]` variants) have
   /// 1M in Claude Code; a conversation seen above 200k proves 1M as well.
@@ -95,6 +100,11 @@ public struct UsageReader: Codable, Sendable, Equatable {
       guard line.contains(Self.tokenCountTag) || line.contains(Self.turnContextTag) || line.contains(Self.sessionMetaTag)
       else { return }
       consumeCodex(line, add)
+    case .pi:
+      guard line.contains(Self.piAssistantTag) || line.contains(Self.piUsageEntryTag)
+        || line.contains(Self.piSessionTag) || line.contains(Self.piModelChangeTag)
+      else { return }
+      consumePi(line, add)
     }
   }
 
@@ -171,6 +181,65 @@ public struct UsageReader: Codable, Sendable, Equatable {
     }
   }
 
+  /// Pi writes one `message` entry per request (assistant messages carry `usage`) plus
+  /// `usage` entries for compaction and cache warming. Entry ids are unique per session.
+  private mutating func consumePi(_ line: Data, _ add: (UsageContribution) -> Void) {
+    guard let object = Self.object(line), let type = object["type"] as? String else { return }
+    switch type {
+    case "session":
+      cwd = object["cwd"] as? String ?? cwd
+    case "model_change":
+      model = object["modelId"] as? String ?? model
+    case "message":
+      guard let message = object["message"] as? [String: Any],
+        message["role"] as? String == "assistant",
+        let raw = message["usage"] as? [String: Any]
+      else { return }
+      let name = message["model"] as? String ?? model ?? "unknown"
+      guard name != "<synthetic>" else { return }
+      let usage = TokenUsage(
+        input: Self.int(raw["input"]), cacheRead: Self.int(raw["cacheRead"]),
+        cacheWrite: Self.int(raw["cacheWrite"]), output: Self.int(raw["output"]),
+        reasoning: Self.int(raw["reasoning"]))
+      let at = Self.date(object["timestamp"])
+      model = name
+      let context = usage.input + usage.cacheRead + usage.cacheWrite
+      largestContext = max(largestContext, context)
+      contextTokens = context
+      contextWindow = PiModelCatalog.contextWindow(name, home: home)
+        ?? (name.hasPrefix("claude-")
+          ? Self.claudeContextWindow(model: name, largest: largestContext) : nil)
+      let id = object["id"] as? String
+      if let id, let index = recent.firstIndex(where: { $0.id == id }) {
+        let counted = recent[index]
+        guard counted.usage != usage else { return }
+        recent[index].usage = usage
+        add(UsageContribution(
+          at: counted.at, model: counted.model, cwd: counted.cwd, usage: usage - counted.usage,
+          messageId: id))
+        return
+      }
+      if let id {
+        recent.append(Recent(id: id, usage: usage, at: at, model: name, cwd: cwd))
+        if recent.count > Self.recentLimit { recent.removeFirst(recent.count - Self.recentLimit) }
+      }
+      add(UsageContribution(at: at, model: name, cwd: cwd, usage: usage, messageId: id))
+    case "usage":
+      guard let raw = object["usage"] as? [String: Any] else { return }
+      let name = object["model"] as? String ?? model ?? "unknown"
+      let usage = TokenUsage(
+        input: Self.int(raw["input"]), cacheRead: Self.int(raw["cacheRead"]),
+        cacheWrite: Self.int(raw["cacheWrite"]), output: Self.int(raw["output"]),
+        reasoning: Self.int(raw["reasoning"]))
+      guard !usage.isZero else { return }
+      add(UsageContribution(
+        at: Self.date(object["timestamp"]), model: name, cwd: cwd, usage: usage,
+        messageId: object["id"] as? String))
+    default:
+      break
+    }
+  }
+
   /// Codex's `input_tokens` includes the cached part.
   static func codexUsage(_ raw: [String: Any]) -> TokenUsage {
     let cached = int(raw["cached_input_tokens"])
@@ -184,6 +253,10 @@ public struct UsageReader: Codable, Sendable, Equatable {
   static let tokenCountTag = Data(#""token_count""#.utf8)
   static let turnContextTag = Data(#""turn_context""#.utf8)
   static let sessionMetaTag = Data(#""session_meta""#.utf8)
+  static let piAssistantTag = Data(#""role":"assistant""#.utf8)
+  static let piUsageEntryTag = Data(#""type":"usage""#.utf8)
+  static let piSessionTag = Data(#""type":"session""#.utf8)
+  static let piModelChangeTag = Data(#""type":"model_change""#.utf8)
 
   static func object(_ line: Data) -> [String: Any]? {
     (try? JSONSerialization.jsonObject(with: line)) as? [String: Any]
@@ -201,6 +274,52 @@ public struct UsageReader: Codable, Sendable, Equatable {
   static func date(_ value: Any?) -> Date? {
     guard let text = value as? String else { return nil }
     return dateLock.withLock { isoFractional.date(from: text) ?? iso.date(from: text) }
+  }
+}
+
+/// Context windows from Pi's models.json, cached by file modification time. Models Pi ships
+/// with are not in that file; for those the model family hints above apply, else no percentage.
+enum PiModelCatalog {
+  private static let lock = NSLock()
+  nonisolated(unsafe) private static var cache: (url: URL, modified: Date?, windows: [String: Int])?
+
+  static func contextWindow(_ model: String?, home: URL?) -> Int? {
+    guard let model else { return nil }
+    let url = (home ?? FileManager.default.homeDirectoryForCurrentUser)
+      .appendingPathComponent(".pi/agent/models.json")
+    let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+      .contentModificationDate
+    let windows = lock.withLock { () -> [String: Int] in
+      if let cache, cache.url == url, cache.modified == modified { return cache.windows }
+      let parsed = parse(url)
+      cache = (url, modified, parsed)
+      return parsed
+    }
+    return windows[model]
+  }
+
+  static func parse(_ url: URL) -> [String: Int] {
+    guard let data = FileManager.default.contents(atPath: url.path),
+      let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    else { return [:] }
+    var result: [String: Int] = [:]
+    if let providers = root["providers"] as? [String: Any] {
+      for case let provider as [String: Any] in providers.values {
+        for case let model as [String: Any] in provider["models"] as? [Any] ?? [] {
+          if let id = model["id"] as? String, let window = model["contextWindow"] as? NSNumber {
+            result[id] = window.intValue
+          }
+        }
+        if let overrides = provider["modelOverrides"] as? [String: Any] {
+          for (id, value) in overrides {
+            if let config = value as? [String: Any], let window = config["contextWindow"] as? NSNumber {
+              result[id] = window.intValue
+            }
+          }
+        }
+      }
+    }
+    return result
   }
 }
 

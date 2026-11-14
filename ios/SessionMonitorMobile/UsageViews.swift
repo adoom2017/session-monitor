@@ -132,7 +132,7 @@ struct UsagePage: View {
       }
       card("按模型") { ranking(UsageReport.ranking(selected, by: \.model)) }
       card("按项目") { ranking(UsageReport.ranking(selected, by: \.project)) }
-      Text("统计 Mac 上全部 Claude Code 与 Codex 会话记录，按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出；缓存命中率 = 缓存读 ÷ 全部输入。")
+      Text("统计 Mac 上全部 Claude Code、Codex 与 Pi 会话记录，按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出；缓存命中率 = 缓存读 ÷ 全部输入。")
         .font(.caption).foregroundStyle(Theme.textSecondary)
     }
   }
@@ -164,7 +164,7 @@ struct UsagePage: View {
     let parser = DateFormatter()
     parser.dateFormat = "yyyy-MM-dd"
     return days.flatMap { day in
-      ["Claude", "Codex"].map {
+      ["Claude", "Codex", "Pi"].map {
         DayPoint(day: day, date: parser.date(from: day) ?? Date(), agent: $0, tokens: totals[day + "|" + $0.lowercased()] ?? 0)
       }
     }
@@ -177,7 +177,7 @@ struct UsagePage: View {
       // Tap or drag over the chart: that day's values replace the hint.
       if let selectedKey {
         let day = points.filter { $0.day == selectedKey }
-        Text("\(selectedKey)  Claude \(UsageReport.format(day.first { $0.agent == "Claude" }?.tokens ?? 0)) · Codex \(UsageReport.format(day.first { $0.agent == "Codex" }?.tokens ?? 0))")
+        Text("\(selectedKey)  " + day.map { "\($0.agent) \(UsageReport.format($0.tokens))" }.joined(separator: " · "))
           .font(.caption.monospacedDigit())
       } else {
         Text("按住图表查看某一天").font(.caption).foregroundStyle(Theme.textSecondary)
@@ -188,7 +188,7 @@ struct UsagePage: View {
           .cornerRadius(2)
           .opacity(selectedKey == nil || selectedKey == point.day ? 1 : 0.45)
       }
-      .chartForegroundStyleScale(["Claude": Theme.chartClaude, "Codex": Theme.chartCodex])
+      .chartForegroundStyleScale(["Claude": Theme.chartClaude, "Codex": Theme.chartCodex, "Pi": Theme.chartPi])
       .chartLegend(position: .top, alignment: .leading)
       .chartXSelection(value: $selectedDay)
       .chartYAxis {

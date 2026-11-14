@@ -132,7 +132,10 @@ extension Session {
           : "未接入 hook：仅根据会话文件显示忙/闲，无法判断权限等待。")
     }
     if source == .processScan {
-      notes.append("从运行中的 Codex 进程发现，尚未收到它的 hook 事件；忙/闲来自 Codex 会话记录。")
+      notes.append(
+        kind == .pi
+          ? "从运行中的 Pi 进程发现，尚未收到它的扩展事件；下一次活动后实时更新。"
+          : "从运行中的 Codex 进程发现，尚未收到它的 hook 事件；忙/闲来自 Codex 会话记录。")
     }
     if state == .needsPermission { notes.append("若已在终端拒绝权限，状态会在下一次输入后更新。") }
     if outsideTmux { notes.append(Self.outsideTmuxTip) }
@@ -184,12 +187,11 @@ struct StateDot: View {
   }
 }
 
-/// Distinguishes Claude and Codex sessions in a mixed list.
+/// Distinguishes Claude, Codex and Pi sessions in a mixed list.
 struct AgentBadge: View {
   let kind: AgentKind
   var body: some View {
-    let codex = kind == .codex
-    Tag(text: codex ? "Codex" : "Claude", color: codex ? Theme.cyan : Theme.indigo)
+    Tag(text: kind.displayName, color: Theme.agent(kind))
   }
 }
 

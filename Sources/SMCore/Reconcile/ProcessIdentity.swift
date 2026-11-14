@@ -101,6 +101,12 @@ public struct ProcessIdentity: Sendable {
         }
       case .codex:
         if process.executable.contains("codex") { return process }
+      case .pi:
+        // Pi sets its process title to "pi"; the managed launcher is a Node bundle underneath.
+        if process.executable == "pi" { return process }
+        if process.executable == "node",
+          (arguments(pid: process.pid) ?? []).contains(where: { $0.contains("pi-coding-agent") })
+        { return process }
       }
       pid = process.parent
     }
