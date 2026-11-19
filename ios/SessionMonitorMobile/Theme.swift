@@ -86,6 +86,7 @@ extension RemoteSession {
     switch agent {
     case "codex": "Codex"
     case "pi": "Pi"
+    case "agy": "Antigravity"
     default: "Claude"
     }
   }
@@ -93,6 +94,7 @@ extension RemoteSession {
     switch agent {
     case "codex": Theme.cyan
     case "pi": Theme.purple
+    case "agy": Theme.green
     default: Theme.indigo
     }
   }

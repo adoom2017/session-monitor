@@ -107,6 +107,8 @@ public struct ProcessIdentity: Sendable {
         if process.executable == "node",
           (arguments(pid: process.pid) ?? []).contains(where: { $0.contains("pi-coding-agent") })
         { return process }
+      case .agy:
+        if process.executable == "agy" { return process }
       }
       pid = process.parent
     }

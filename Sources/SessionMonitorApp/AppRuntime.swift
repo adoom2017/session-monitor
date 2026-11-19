@@ -23,7 +23,7 @@ import SMProtocol
   init(store: SessionStore, directory: URL) {
     self.store = store
     self.directory = directory
-    sources = ["claude": ClaudeSource(), "codex": CodexSource(), "pi": PiSource()]
+    sources = ["claude": ClaudeSource(), "codex": CodexSource(), "pi": PiSource(), "agy": AgySource()]
     ledger = UsageLedger(directory: directory)
   }
 

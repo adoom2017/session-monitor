@@ -30,6 +30,7 @@ enum Theme {
     case .claude: indigo
     case .codex: cyan
     case .pi: purple
+    case .agy: green
     }
   }
 

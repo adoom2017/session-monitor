@@ -4,7 +4,7 @@ import SMCore
 
 do {
   guard CommandLine.arguments.count == 2, let kind = AgentKind(rawValue: CommandLine.arguments[1])
-  else { throw MonitorError.invalid("usage: sm-hook <claude|codex|pi>") }
+  else { throw MonitorError.invalid("usage: sm-hook <claude|codex|pi|agy>") }
   let home: URL
   if let configured = ProcessInfo.processInfo.environment["HOME"] {
     home = URL(fileURLWithPath: configured, isDirectory: true)
@@ -30,7 +30,8 @@ do {
         chain.append("\(process.pid) \(process.executable) tty=\(process.tty ?? "-")")
         pid = process.parent
       }
-      let event = payload["hook_event_name"]?.string ?? "unknown"
+      let eventKey = kind == .agy ? "hookEventName" : "hook_event_name"
+      let event = payload[eventKey]?.string ?? "unknown"
       let stamp = Int(Date().timeIntervalSince1970 * 1000)
       let base = captureDirectory.appendingPathComponent("\(stamp)-\(event)-\(UUID().uuidString.prefix(8))")
       try input.write(to: base.appendingPathExtension("json"), options: [.withoutOverwriting])
@@ -41,6 +42,11 @@ do {
     }
   }
   let agent = try ProcessIdentity.findAgent(kind: kind, home: home)
+  // The global Antigravity config is shared with the desktop product.
+  if kind == .agy, agent == nil {
+    print("{}")
+    exit(EXIT_SUCCESS)
+  }
   let environment = ProcessInfo.processInfo.environment
   var values: [String: String?] = [:]
   for key in ["TMUX", "TMUX_PANE", "TERM_PROGRAM", "ITERM_SESSION_ID"] {
@@ -79,6 +85,8 @@ do {
         Data(("hook diagnostic log failed: \(error.localizedDescription)\n").utf8))
     }
   }
+  // Antigravity's observation hooks expect a JSON result even when no changes are requested.
+  if kind == .agy { print("{}") }
 } catch {
   let message = "sm-hook: \(error.localizedDescription)\n"
   if let home = ProcessInfo.processInfo.environment["HOME"] {

@@ -103,6 +103,7 @@ public enum TranscriptParser {
     case .claude: return claude(json, at: at, offset: offset)
     case .codex: return codex(json, at: at, offset: offset)
     case .pi: return pi(json, at: at, offset: offset)
+    case .agy: return []
     }
   }
 

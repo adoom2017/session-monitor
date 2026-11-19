@@ -19,7 +19,7 @@ struct SessionListView: View {
       if model.sessions.isEmpty, case .connected = model.connection {
         ContentUnavailableView(
           "没有会话", systemImage: "moon.zzz",
-          description: Text("Mac 上没有运行中的 Claude Code、Codex 或 Pi 会话。"))
+          description: Text("Mac 上没有运行中的代理会话。"))
           .listRowBackground(Color.clear)
       }
       ForEach(model.orderedSessions) { session in

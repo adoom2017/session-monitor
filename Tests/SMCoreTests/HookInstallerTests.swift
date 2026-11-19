@@ -28,6 +28,38 @@ import Testing
     }
   }
 
+  @Test func agyInstallUsesFlatObservationHooksAndPreservesOtherGroups() throws {
+    let box = try Sandbox()
+    let path = ".gemini/config/hooks.json"
+    let original = #"{"lint":{"PostToolUse":[{"matcher":"run_command","hooks":[{"command":"./lint.sh"}]}]}}"#
+    try box.write(path, original)
+    let installer = HookInstaller(agent: .agy, home: box.home)
+    let backup = try installer.install(bundledHook: box.bundledHook)
+    #expect(try String(contentsOf: backup, encoding: .utf8) == original)
+    #expect(installer.status() == .installed)
+    let config = try box.read(path)
+    let group = try #require(config["codewhistle"])
+    #expect(group.objectPairs?.map(\.0) == ["SessionStart", "PreInvocation", "Stop"])
+    #expect(group["PreInvocation"]?.arrayValue?.first?["command"]?.stringValue == installer.command)
+    try installer.install(bundledHook: box.bundledHook)
+    #expect(try box.read(path) == config)
+    try installer.uninstall()
+    #expect(installer.status() == .notInstalled)
+    #expect(try box.read(path) == OrderedJSON.parse(Data(original.utf8)))
+  }
+
+  @Test func agyInstallDoesNotOverwriteConflictingGroup() throws {
+    let box = try Sandbox()
+    let path = ".gemini/config/hooks.json"
+    let original = #"{"codewhistle":{"Stop":[{"command":"./other.sh"}]}}"#
+    try box.write(path, original)
+    let installer = HookInstaller(agent: .agy, home: box.home)
+    #expect(throws: MonitorError.self) { try installer.install(bundledHook: box.bundledHook) }
+    #expect(throws: MonitorError.self) { try installer.uninstall() }
+    #expect(try box.read(path) == OrderedJSON.parse(Data(original.utf8)))
+    #expect(!FileManager.default.fileExists(atPath: installer.hookBinaryURL.path))
+  }
+
   @Test func orderedJSONKeepsOrderNumbersAndUnicode() throws {
     let text = #"{"z":1,"a":{"y":2.50,"b":[true,null,"中文\n\"x\""]},"m":-3e2}"#
     let value = try OrderedJSON.parse(Data(text.utf8))

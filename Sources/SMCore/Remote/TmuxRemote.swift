@@ -12,7 +12,7 @@ public struct RemoteRejection: Error, LocalizedError, Sendable, Equatable {
 /// with a tmux pane qualify; every action first proves the pane still hosts that session.
 public enum TmuxRemote {
   public static func canSend(_ session: Session) -> Bool {
-    session.terminal.tmuxPane != nil && session.pid != nil && session.state != .ended
+    session.kind != .agy && session.terminal.tmuxPane != nil && session.pid != nil && session.state != .ended
   }
 
   struct Target: Sendable {
@@ -24,6 +24,7 @@ public enum TmuxRemote {
   /// Resolves the pane and checks its shell is an ancestor of the session's process, so a pane
   /// reused by another program never receives the input.
   static func target(for session: Session) async throws -> Target {
+    guard session.kind != .agy else { throw RemoteRejection("Antigravity 会话仅支持状态监控") }
     guard let pane = session.terminal.tmuxPane, let pid = session.pid else {
       throw RemoteRejection("该会话不在 tmux 中，只能查看")
     }

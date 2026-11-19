@@ -5,7 +5,7 @@ import Foundation
 /// installs, so those uninstall cleanly too. Back up first, add only our entries (other tools' hooks and key order are kept), write
 /// atomically, verify, roll back on failure; uninstall restores the original semantics exactly.
 public struct HookInstaller: Sendable {
-  public enum Agent: String, Sendable, CaseIterable { case claude, codex, pi }
+  public enum Agent: String, Sendable, CaseIterable { case claude, codex, pi, agy }
 
   public enum Status: Equatable, Sendable {
     case notInstalled
@@ -26,6 +26,9 @@ public struct HookInstaller: Sendable {
     "SessionStart", "SessionEnd", "SubagentStart", "SubagentStop", "PreToolUse",
     "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "UserPromptSubmit", "Stop",
   ]
+  // PreToolUse requires a permission decision. These events only observe the lifecycle.
+  static let agyEvents = ["SessionStart", "PreInvocation", "Stop"]
+  static let agyGroup = "codewhistle"
 
   public let agent: Agent
   public let home: URL
@@ -41,6 +44,7 @@ public struct HookInstaller: Sendable {
     case .codex: home.appendingPathComponent(".codex/hooks.json")
     // Pi has no hooks file: an auto-discovered extension forwards its lifecycle events.
     case .pi: home.appendingPathComponent(".pi/agent/extensions/codewhistle.ts")
+    case .agy: home.appendingPathComponent(".gemini/config/hooks.json")
     }
   }
   var manifestURL: URL {
@@ -49,6 +53,7 @@ public struct HookInstaller: Sendable {
     case .claude: name = "hook-installation.json"
     case .codex: name = "hook-installation-codex.json"
     case .pi: name = "hook-installation-pi.json"  // unused: the extension is the whole install
+    case .agy: name = "hook-installation-agy.json"
     }
     return runtime.appendingPathComponent(name)
   }
@@ -58,6 +63,7 @@ public struct HookInstaller: Sendable {
     case .claude: Self.claudeEvents
     case .codex: Self.codexEvents
     case .pi: []
+    case .agy: Self.agyEvents
     }
   }
   var command: String { Self.shellQuote(hookBinaryURL.path) + " " + agent.rawValue }
@@ -76,6 +82,10 @@ public struct HookInstaller: Sendable {
     guard FileManager.default.fileExists(atPath: configURL.path) else { return .notInstalled }
     do {
       let root = try OrderedJSON.parse(Data(contentsOf: configURL))
+      if agent == .agy {
+        guard let group = try agyHookGroup(in: root) else { return .notInstalled }
+        return group["enabled"] == .bool(false) ? .notInstalled : .installed
+      }
       let ours = try Self.ourEntryPositions(in: root)
       guard !ours.isEmpty else { return .notInstalled }
       guard agent == .codex else { return .installed }
@@ -125,6 +135,21 @@ public struct HookInstaller: Sendable {
       && hook["command"]?.stringValue?.contains(marker) == true
   }
 
+  private func agyHookGroup(in root: OrderedJSON) throws -> OrderedJSON? {
+    guard root.objectPairs != nil else { throw MonitorError.invalid("config root must be an object") }
+    guard let group = root[Self.agyGroup] else { return nil }
+    guard let pairs = group.objectPairs, Self.agyEvents.allSatisfy({ group[$0] != nil }),
+      pairs.allSatisfy({ key, value in
+        if key == "enabled" { return value == .bool(true) || value == .bool(false) }
+        guard Self.agyEvents.contains(key), let handlers = value.arrayValue, handlers.count == 1 else {
+          return false
+        }
+        return handlers[0]["type"]?.stringValue == "command" && handlers[0]["command"]?.stringValue == command
+      })
+    else { throw MonitorError.invalid("Antigravity hook 组 codewhistle 与已有配置冲突") }
+    return group
+  }
+
   // MARK: Install / uninstall
 
   /// Copies `bundledHook` (the app's sm-hook) into place and adds our entries.
@@ -138,6 +163,11 @@ public struct HookInstaller: Sendable {
     return try edit { root, hooks, _ in
       try installBinary(from: bundledHook)
       var entry: [(String, OrderedJSON)] = [("type", .string("command")), ("command", .string(command))]
+      if agent == .agy {
+        entry.append(("timeout", .number("5")))
+        root.set(Self.agyGroup, .object(events.map { ($0, .array([.object(entry)])) }))
+        return
+      }
       if agent == .claude { entry.append(("timeout", .number("5"))) }
       for event in events {
         var groups = hooks[event]?.arrayValue ?? []
@@ -153,7 +183,11 @@ public struct HookInstaller: Sendable {
   @discardableResult
   public func uninstall() throws -> URL {
     if agent == .pi { return try uninstallExtension() }
-    let backup = try edit(uninstalling: true) { _, hooks, _ in
+    let backup = try edit(uninstalling: true) { root, hooks, _ in
+      if agent == .agy {
+        root.set(Self.agyGroup, nil)
+        return
+      }
       guard let pairs = hooks.objectPairs else { return }
       for (event, groups) in pairs {
         var kept: [OrderedJSON] = []
@@ -282,13 +316,18 @@ public struct HookInstaller: Sendable {
     let original = existed ? try Data(contentsOf: configURL) : Data("{}\n".utf8)
     var root = try OrderedJSON.parse(original)
     guard root.objectPairs != nil else { throw MonitorError.invalid("config root must be an object") }
-    let hadHooks = root["hooks"] != nil
-    var hooks = root["hooks"] ?? .object([])
-    guard let events = hooks.objectPairs else { throw MonitorError.invalid("hooks must be an object") }
-    for (event, groups) in events {  // validate everything before touching anything
-      guard let list = groups.arrayValue else { throw MonitorError.invalid("hooks.\(event) must be an array") }
-      for group in list where group["hooks"]?.arrayValue == nil {
-        throw MonitorError.invalid("hook group in \(event) must contain a hooks array")
+    let hadHooks = agent != .agy && root["hooks"] != nil
+    var hooks = OrderedJSON.object([])
+    if agent == .agy {
+      _ = try agyHookGroup(in: root)
+    } else {
+      hooks = root["hooks"] ?? .object([])
+      guard let events = hooks.objectPairs else { throw MonitorError.invalid("hooks must be an object") }
+      for (event, groups) in events {  // validate everything before touching anything
+        guard let list = groups.arrayValue else { throw MonitorError.invalid("hooks.\(event) must be an array") }
+        for group in list where group["hooks"]?.arrayValue == nil {
+          throw MonitorError.invalid("hook group in \(event) must contain a hooks array")
+        }
       }
     }
     var manifest: Manifest?
@@ -306,10 +345,12 @@ public struct HookInstaller: Sendable {
     }
 
     try mutate(&root, &hooks, manifest)
-    let keepHooksKey =
-      !(hooks.objectPairs ?? []).isEmpty
-      || (uninstalling && manifest?.hadHooks == true) || (!uninstalling && hadHooks)
-    root.set("hooks", keepHooksKey ? hooks : nil)
+    if agent != .agy {
+      let keepHooksKey =
+        !(hooks.objectPairs ?? []).isEmpty
+        || (uninstalling && manifest?.hadHooks == true) || (!uninstalling && hadHooks)
+      root.set("hooks", keepHooksKey ? hooks : nil)
+    }
 
     try fm.createDirectory(
       at: configURL.deletingLastPathComponent(), withIntermediateDirectories: true,

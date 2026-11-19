@@ -2,7 +2,7 @@
 
 ## 使用说明
 
-码哨（英文名 Codewhistle，原名 SessionMonitor）是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code、Codex 和 Pi 会话状态，并配有 iPhone App。App 名称随系统语言显示为"码哨"或"Codewhistle"；应用文件为 `Codewhistle.app`（访达只有在文件名与英文名一致时才会显示中文名"码哨"）。
+码哨（英文名 Codewhistle，原名 SessionMonitor）是运行在 Apple Silicon Mac（macOS 14 及以上）上的悬浮窗与菜单栏应用，用于查看 Claude Code、Codex、Pi 和 Antigravity CLI（`agy`）会话状态，并配有 iPhone App。App 名称随系统语言显示为"码哨"或"Codewhistle"；应用文件为 `Codewhistle.app`（访达只有在文件名与英文名一致时才会显示中文名"码哨"）。
 
 <table>
   <tr>
@@ -20,9 +20,10 @@
 ### 安装与接入
 
 1. 将 `Codewhistle.app` 放入 `/Applications`，然后启动。从旧版本升级时，先退出并删除原来的 `SessionMonitor.app`；配对、hook 和设置会保留。
-2. 点击菜单栏图标 → **设置…** → **集成**，为需要监控的 Claude Code 或 Codex 点击 **安装**。
+2. 点击菜单栏图标 → **设置…** → **集成**，为需要监控的 CLI 点击 **安装**。
 3. 使用 Codex 时，在 Codex 会话中输入 `/hooks`，批准码哨（sm-hook）的条目；安装后重启已打开的 Codex 会话。
    使用 Pi 时，安装会写入扩展 `~/.pi/agent/extensions/codewhistle.ts`；已打开的 Pi 会话输入 `/reload` 或重启后生效。Pi 没有权限确认，所以不会出现"需要授权"状态。
+   使用 Antigravity CLI 时，安装会向 `~/.gemini/config/hooks.json` 添加 `codewhistle` 组；重启已打开的 `agy` 会话后生效。Mac 支持状态监控和终端跳转，手机支持查看状态；暂不支持工具审批、对话内容、远程输入和用量统计。
 4. 允许系统通知。需要调整权限时，打开 **系统设置 → 通知 → 码哨**。
 
 安装 hook 会保留其他工具的配置，并在修改前备份到 `~/.session-monitor/backups/`。App 更新后会自动同步已安装的 hook 程序。
@@ -45,8 +46,8 @@ tmux 会话可定位到对应窗格；使用该功能需要安装 tmux。首次�
 
 Mac 换了网络不需要重新配对：手机连不上原来的地址时，会在当前局域网里自动找到这台 Mac，或者改走 Tailscale；每次连上后还会更新存下的地址。同一部手机重新配对时，会替换 Mac 上原来那条记录，不会重复出现。
 
-- 手机上可以查看所有会话的状态和对话内容，以及每个会话的 token 用量；右上角菜单 → **用量统计** 查看 Mac 上全部会话的汇总。
-- tmux 中运行的会话还可以：查看终端画面、发送消息、按 Esc 中断、点选权限菜单的选项。终端正在显示选择菜单时，不能发送文字，以免回车误选默认项。
+- 手机上可以查看会话状态，并查看 Claude Code、Codex 和 Pi 的对话及 token 用量；右上角菜单 → **用量统计** 查看 Mac 上的汇总。
+- Claude Code、Codex 和 Pi 在 tmux 中运行时，还可以在手机上查看终端画面、发送消息或按 Esc 中断。终端正在显示选择菜单时，不能发送文字，以免回车误选默认项。
 - 不在 tmux 中的会话只能查看。
 
 只接受局域网和 Tailscale 地址的连接，通信经 TLS 加密，证书指纹在配对时固定；配对码 5 分钟内有效、只能使用一次。已配对的设备可在同一页面吊销。每次远程操作都会记录到日志。

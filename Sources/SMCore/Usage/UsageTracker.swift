@@ -26,6 +26,7 @@ public actor UsageTracker {
       case .claude: located = try? ClaudeSource.transcript(of: session, home: home)
       case .codex: located = session.transcriptPath.map { URL(fileURLWithPath: $0) }
       case .pi: located = try? PiSource.transcript(of: session, home: home)
+      case .agy: located = nil
       }
       guard let url = located, FileManager.default.fileExists(atPath: url.path) else {
         meters.removeValue(forKey: session.id)

@@ -93,7 +93,7 @@ public enum JSONValue: Codable, Sendable, Equatable {
 }
 
 public enum AgentKind: String, Codable, Sendable {
-  case claude, codex, pi
+  case claude, codex, pi, agy
 
   /// Shown in the panel badge, menus and notifications.
   public var displayName: String {
@@ -101,6 +101,7 @@ public enum AgentKind: String, Codable, Sendable {
     case .claude: "Claude"
     case .codex: "Codex"
     case .pi: "Pi"
+    case .agy: "Antigravity"
     }
   }
 }

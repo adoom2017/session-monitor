@@ -8,3 +8,7 @@ envelope 是为重放而生成的包装：agentPid 来自当时 parentChain 中 
 
 - `codex-probe.jsonl`：一次真实 Codex 测试会话的 19 个 hook payload（由 `sm-hook codex` 的采集模式保存）。payload 保持原样（提示词是测试时写的探针文本），外层 envelope 按采集时间重建；`env` 是 tmux 场景的代表值，因为采集模式只保存 payload，不保存环境变量。
 - `codex-probe-rollout.jsonl`：同一会话 rollout 文件中的回合生命周期行（`task_started`/`task_complete`/`turn_aborted`），只保留类型、时间和 reason。最后一轮是按 Esc 中断的，没有触发任何 hook，只能从 rollout 的 `turn_aborted` 看出来。
+
+## agy-probe（Antigravity CLI 1.5.9，2026-11-19）
+
+临时项目内用 `.agents/hooks.json` 运行 `sm-hook agy` 采得的完整三条事件，按 spool 原顺序保留。路径、会话 ID、PID 和探针文本已替换，进程环境和离线投递诊断已移除。原始三条事件的父进程均为同一个 `agy`。

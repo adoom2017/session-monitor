@@ -105,6 +105,7 @@ public struct UsageReader: Codable, Sendable, Equatable {
         || line.contains(Self.piSessionTag) || line.contains(Self.piModelChangeTag)
       else { return }
       consumePi(line, add)
+    case .agy: break
     }
   }
 

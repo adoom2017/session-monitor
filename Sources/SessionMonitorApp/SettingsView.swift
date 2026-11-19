@@ -141,6 +141,7 @@ struct IntegrationSettings: View {
         hookRow(.claude, name: "Claude Code", folder: ".claude")
         hookRow(.codex, name: "Codex", folder: ".codex")
         hookRow(.pi, name: "Pi", folder: ".pi")
+        hookRow(.agy, name: "Antigravity CLI", folder: ".gemini/antigravity-cli")
       } header: {
         Text("Hook")
       } footer: {
@@ -177,7 +178,9 @@ struct IntegrationSettings: View {
         if let agent = confirmUninstall { run(agent, install: false) }
       }
     } message: {
-      Text("只移除 \(AppInfo.name) 自己的条目，其他 hook 不受影响。卸载后该工具的会话只能显示忙/闲。")
+      Text(confirmUninstall == .agy
+        ? "只移除码哨自己的条目。重启 Antigravity CLI 后，只显示检测到的进程。"
+        : "只移除 \(AppInfo.name) 自己的条目，其他 hook 不受影响。卸载后该工具的会话只能显示忙/闲。")
     }
   }
 
@@ -186,6 +189,7 @@ struct IntegrationSettings: View {
     case .claude: "Claude Code"
     case .codex: "Codex"
     case .pi: "Pi"
+    case .agy: "Antigravity CLI"
     }
   }
 
@@ -224,16 +228,19 @@ struct IntegrationSettings: View {
       atPath: FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(folder).path)
     let (symbol, color, detail): (String, Color, String) = {
       switch status {
-      case .installed: return ("checkmark.circle.fill", Theme.green, "已安装，会话状态实时更新")
+      case .installed:
+        return ("checkmark.circle.fill", Theme.green,
+          agent == .agy ? "已安装，重启已打开的 Antigravity CLI 会话后生效" : "已安装，会话状态实时更新")
       case .awaitingTrust(let count):
         return (
           "exclamationmark.circle.fill", Theme.orange,
           "已安装，还有 \(count) 项需要在 Codex 中批准：在任意 Codex 会话输入 /hooks 批准；已打开的 Codex 会话需重启"
         )
       case .notInstalled:
+        let available = agent == .agy ? "未安装：仅识别运行中的 CLI" : "未安装：只能显示忙/闲，无法提示授权和等待输入"
         return (
           "circle.dashed", .secondary,
-          toolPresent ? "未安装：只能显示忙/闲，无法提示授权和等待输入" : "未检测到 \(name)（~/\(folder) 不存在）"
+          toolPresent ? available : "未检测到 \(name)（~/\(folder) 不存在）"
         )
       case .unreadable(let message): return ("xmark.octagon.fill", Theme.pink, "配置文件无法读取：\(message)")
       }
