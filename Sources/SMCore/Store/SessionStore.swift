@@ -257,6 +257,13 @@ import Observation
     byID[event.key] = row
   }
 
+  func adoptScannedAgyConversation(pid: Int32, conversationID: String) {
+    let id = Session.key(kind: .agy, pid: pid, sessionId: conversationID)
+    guard var row = byID[id], row.currentSessionId.hasPrefix(Self.pendingSessionPrefix) else { return }
+    row.currentSessionId = conversationID
+    byID[id] = row
+  }
+
   /// A turn ended without a hook (Codex Esc interrupt) or its Stop was missed; the rollout says so.
   public func applyExternalTurnEnd(id: String, aborted: Bool, at: Date) {
     guard let s = byID[id] else { return }

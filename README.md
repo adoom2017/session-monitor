@@ -24,6 +24,8 @@
 3. 使用 Codex 时，在 Codex 会话中输入 `/hooks`，批准码哨（sm-hook）的条目；安装后重启已打开的 Codex 会话。
    使用 Pi 时，安装会写入扩展 `~/.pi/agent/extensions/codewhistle.ts`；已打开的 Pi 会话输入 `/reload` 或重启后生效。Pi 没有权限确认，所以不会出现"需要授权"状态。
    使用 Antigravity CLI 时，安装会向 `~/.gemini/config/hooks.json` 添加 `codewhistle` 组；重启已打开的 `agy` 会话后生效。Mac 支持状态监控和终端跳转，Mac 和手机均可查看 token 用量；暂不支持工具审批、对话内容和远程输入。
+
+   如需查看上下文占用，在同一页开启 **Antigravity 上下文占用**，再重启 `agy`。圆环使用 CLI 状态栏报告的当前 token 和窗口上限。已有自定义状态栏时，码哨会保留原配置。
 4. 允许系统通知。需要调整权限时，打开 **系统设置 → 通知 → 码哨**。
 
 安装 hook 会保留其他工具的配置，并在修改前备份到 `~/.session-monitor/backups/`。App 更新后会自动同步已安装的 hook 程序。
@@ -36,7 +38,7 @@
 - 菜单栏提供全部已读、开机启动、设置、查看日志和退出。日志保存在 `~/.session-monitor/app.log`，只保留最近 3 天。
 - 在设置中分别开启或关闭授权、输入和完成通知。
 - 每个会话行末尾显示当前线程累计的 token 数和上下文占用；上下文超过 80% 变橙色，表示快要自动压缩。鼠标停在上面可以看到输入、缓存读写、输出的明细。
-- 菜单栏 → **用量统计…** 汇总本机 Claude Code、Codex、Pi 和 Antigravity CLI 的 token 用量，包括码哨没运行时的会话：今天、近 7 天、近 30 天，每日柱状图，按模型和按项目排行。统计结果缓存在 `~/.session-monitor/usage/`，agent 删除旧记录后历史仍然保留。Antigravity 的用量来自 CLI 写入的完整会话日志；日志没有项目路径和上下文上限，因此项目归为未知，会话行只显示累计 token。
+- 菜单栏 → **用量统计…** 汇总本机 Claude Code、Codex、Pi 和 Antigravity CLI 的 token 用量，包括码哨没运行时的会话：今天、近 7 天、近 30 天，每日柱状图，按模型和按项目排行。统计结果缓存在 `~/.session-monitor/usage/`，agent 删除旧记录后历史仍然保留。Antigravity 的累计用量来自 CLI 写入的完整会话日志；日志没有项目路径，因此项目归为未知。
 
 tmux 会话可定位到对应窗格；使用该功能需要安装 tmux。首次切换终端标签页时，按系统提示允许自动化权限。无法完成跳转时，应用会显示错误并复制会话工作目录。
 

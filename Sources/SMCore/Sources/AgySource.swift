@@ -3,8 +3,13 @@ import Foundation
 public struct AgySource: AgentSource {
   public let kind = AgentKind.agy
   let discover: @Sendable () throws -> [ProcessIdentity]
+  let home: URL
 
-  public init(discover: @escaping @Sendable () throws -> [ProcessIdentity] = ProcessIdentity.listAll) {
+  public init(
+    home: URL = FileManager.default.homeDirectoryForCurrentUser,
+    discover: @escaping @Sendable () throws -> [ProcessIdentity] = ProcessIdentity.listAll
+  ) {
+    self.home = home
     self.discover = discover
   }
 
@@ -48,8 +53,18 @@ public struct AgySource: AgentSource {
   public func reconcile(store: SessionStore) async throws {
     let rows = await store.sessions.filter { $0.kind == .agy }
     let known = Set(rows.compactMap(\.pid))
-    for process in try discover() where process.executable == "agy" && !known.contains(process.pid) {
+    let pending = Set(rows.filter { $0.currentSessionId.hasPrefix(SessionStore.pendingSessionPrefix) }.compactMap(\.pid))
+    for process in try discover() where process.executable == "agy" {
       guard let tty = process.tty else { continue }
+      if known.contains(process.pid) {
+        // A resumed conversation can render its status line before sending any lifecycle hook.
+        if pending.contains(process.pid), let id = AgyContext.conversationID(
+          home: home, pid: process.pid, startedAt: process.startTime)
+        {
+          await store.adoptScannedAgyConversation(pid: process.pid, conversationID: id)
+        }
+        continue
+      }
       let pane = try await Jumper.tmuxPane(forTTY: tty)
       await store.upsertScannedAgy(
         pid: process.pid, cwd: ProcessIdentity.cwd(pid: process.pid),

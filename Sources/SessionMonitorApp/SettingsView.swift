@@ -24,6 +24,7 @@ enum AppInfo {
 struct SettingsActions {
   let installHooks: (HookInstaller.Agent) async throws -> URL
   let uninstallHooks: (HookInstaller.Agent) async throws -> URL
+  let setAgyContextEnabled: (Bool) async throws -> URL
   let requestNotifications: () async -> Void
   let showLog: () -> Void
   let openDataDirectory: () -> Void
@@ -134,6 +135,8 @@ struct IntegrationSettings: View {
   @State private var hookMessage: String?
   @State private var busyAgent: HookInstaller.Agent?
   @State private var confirmUninstall: HookInstaller.Agent?
+  @State private var agyContext = HookInstaller(agent: .agy).agyContextStatus()
+  @State private var changingAgyContext = false
 
   var body: some View {
     Form {
@@ -142,6 +145,7 @@ struct IntegrationSettings: View {
         hookRow(.codex, name: "Codex", folder: ".codex")
         hookRow(.pi, name: "Pi", folder: ".pi")
         hookRow(.agy, name: "Antigravity CLI", folder: ".gemini/antigravity-cli")
+        agyContextRow
       } header: {
         Text("Hook")
       } footer: {
@@ -254,12 +258,51 @@ struct IntegrationSettings: View {
         EmptyView()
       } else {
         Button("卸载") { confirmUninstall = agent }.buttonStyle(.destructivePill)
+          .disabled(agent == .agy && changingAgyContext)
       }
     }
   }
 
   private func refresh() {
     for agent in HookInstaller.Agent.allCases { hookStatus[agent] = HookInstaller(agent: agent).status() }
+    agyContext = HookInstaller(agent: .agy).agyContextStatus()
+  }
+
+  private var agyContextRow: some View {
+    let detail: String
+    switch agyContext {
+    case .enabled: detail = "已启用"
+    case .disabled: detail = hookStatus[.agy] == .installed ? "未启用" : "需要先安装 Antigravity CLI 的 hook"
+    case .unavailable(let reason): detail = reason
+    }
+    return SettingsRow(title: "Antigravity 上下文占用", detail: detail) {
+      if case .unavailable = agyContext {
+        EmptyView()
+      } else {
+        Toggle("Antigravity 上下文占用", isOn: Binding(
+          get: { agyContext == .enabled }, set: setAgyContextEnabled))
+          .labelsHidden()
+          .toggleStyle(.switch)
+          .disabled(changingAgyContext || busyAgent == .agy || (agyContext == .disabled && hookStatus[.agy] != .installed))
+      }
+    }
+  }
+
+  private func setAgyContextEnabled(_ enabled: Bool) {
+    changingAgyContext = true
+    Task {
+      defer {
+        changingAgyContext = false
+        refresh()
+      }
+      do {
+        _ = try await actions.setAgyContextEnabled(enabled)
+        hookMessage = "已\(enabled ? "启用" : "停用")上下文占用，重启已打开的 Antigravity CLI 会话后生效。"
+      } catch {
+        hookMessage = "无法更新 Antigravity 上下文占用：\(error.localizedDescription)"
+        actions.report(error, "更新 Antigravity 状态栏失败")
+      }
+    }
   }
 
   private func run(_ agent: HookInstaller.Agent, install: Bool) {

@@ -3,8 +3,10 @@ import Foundation
 import SMCore
 
 do {
-  guard CommandLine.arguments.count == 2, let kind = AgentKind(rawValue: CommandLine.arguments[1])
-  else { throw MonitorError.invalid("usage: sm-hook <claude|codex|pi|agy>") }
+  guard CommandLine.arguments.count == 2 else {
+    throw MonitorError.invalid("usage: sm-hook <claude|codex|pi|agy|agy-context>")
+  }
+  let command = CommandLine.arguments[1]
   let home: URL
   if let configured = ProcessInfo.processInfo.environment["HOME"] {
     home = URL(fileURLWithPath: configured, isDirectory: true)
@@ -15,6 +17,15 @@ do {
   let input = FileHandle.standardInput.readData(ofLength: 1_048_577)
   guard !input.isEmpty, input.count <= 1_048_576 else {
     throw MonitorError.invalid("stdin size must be 1...1MB")
+  }
+  if command == "agy-context" {
+    if let agent = try ProcessIdentity.findAgent(kind: .agy, home: home) {
+      try AgyContext.record(input, home: home, pid: agent.pid)
+    }
+    exit(EXIT_SUCCESS)
+  }
+  guard let kind = AgentKind(rawValue: command) else {
+    throw MonitorError.invalid("usage: sm-hook <claude|codex|pi|agy|agy-context>")
   }
   let payload = try JSONDecoder().decode(JSONValue.self, from: input)
   guard payload.object != nil else { throw MonitorError.invalid("hook payload must be an object") }

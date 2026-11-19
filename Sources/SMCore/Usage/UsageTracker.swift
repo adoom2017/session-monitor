@@ -21,6 +21,11 @@ public actor UsageTracker {
     var result: [String: SessionUsage] = [:]
     meters = meters.filter { id, _ in sessions.contains { $0.id == id } }
     for session in sessions {
+      let context = session.kind == .agy ? AgyContext.current(for: session, home: home) : nil
+      if let context {
+        result[session.id] = SessionUsage(
+          total: TokenUsage(), model: nil, contextTokens: context.tokens, contextWindow: context.window)
+      }
       let located: URL?
       switch session.kind {
       case .claude: located = try? ClaudeSource.transcript(of: session, home: home)
@@ -48,10 +53,11 @@ public actor UsageTracker {
       }
       current.total += added
       meters[session.id] = current
-      guard !current.total.isZero || current.reader.contextTokens != nil else { continue }
+      let contextTokens = context?.tokens ?? current.reader.contextTokens
+      guard !current.total.isZero || contextTokens != nil else { continue }
       result[session.id] = SessionUsage(
-        total: current.total, model: current.reader.model, contextTokens: current.reader.contextTokens,
-        contextWindow: current.reader.contextWindow)
+        total: current.total, model: current.reader.model, contextTokens: contextTokens,
+        contextWindow: context?.window ?? current.reader.contextWindow)
     }
     return result
   }

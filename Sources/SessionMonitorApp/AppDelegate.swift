@@ -187,6 +187,9 @@ import SwiftUI
       uninstallHooks: { agent in
         try await Task.detached { try HookInstaller(agent: agent).uninstall() }.value
       },
+      setAgyContextEnabled: { enabled in
+        try await Task.detached { try HookInstaller(agent: .agy).setAgyContextEnabled(enabled, bundledHook: hook) }.value
+      },
       requestNotifications: { [weak self] in await self?.notifications.requestAuthorization() },
       showLog: { [weak self] in self?.showLog() },
       openDataDirectory: { [weak self] in

@@ -15,6 +15,10 @@ public struct HookInstaller: Sendable {
     case unreadable(String)
   }
 
+  public enum AgyContextStatus: Equatable, Sendable {
+    case disabled, enabled, unavailable(String)
+  }
+
   public static let marker = ".session-monitor/bin/sm-hook"
   public static let claudeEvents = [
     "SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest",
@@ -67,6 +71,53 @@ public struct HookInstaller: Sendable {
     }
   }
   var command: String { Self.shellQuote(hookBinaryURL.path) + " " + agent.rawValue }
+
+  private var agySettingsURL: URL { home.appendingPathComponent(".gemini/antigravity-cli/settings.json") }
+  private var agyContextCommand: String { Self.shellQuote(hookBinaryURL.path) + " agy-context" }
+
+  public func agyContextStatus() -> AgyContextStatus {
+    guard FileManager.default.fileExists(atPath: agySettingsURL.path) else { return .disabled }
+    do {
+      return try agyContextStatus(in: OrderedJSON.parse(Data(contentsOf: agySettingsURL)))
+    } catch { return .unavailable(error.localizedDescription) }
+  }
+
+  @discardableResult public func setAgyContextEnabled(_ enabled: Bool, bundledHook: URL) throws -> URL {
+    let url = agySettingsURL
+    let existed = FileManager.default.fileExists(atPath: url.path)
+    let original = existed ? try Data(contentsOf: url) : Data("{}\n".utf8)
+    var root = try OrderedJSON.parse(original)
+    if case .unavailable(let reason) = try agyContextStatus(in: root) { throw MonitorError.invalid(reason) }
+    let backup = try writeBackup(original, existed: existed, config: url)
+    if enabled {
+      try installBinary(from: bundledHook)
+      root.set("statusLine", .object([
+        ("type", .string("command")), ("command", .string(agyContextCommand)), ("enabled", .bool(true)),
+      ]))
+    } else if root["statusLine"]?["command"] == .string(agyContextCommand) {
+      root.set("statusLine", nil)
+    }
+    try FileManager.default.createDirectory(
+      at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    try root.serialized().write(to: url, options: .atomic)
+    return backup
+  }
+
+  private func agyContextStatus(in root: OrderedJSON) throws -> AgyContextStatus {
+    guard root.objectPairs != nil else { throw MonitorError.invalid("settings.json must be an object") }
+    guard let line = root["statusLine"] else { return .disabled }
+    if line["command"] == .string(agyContextCommand) {
+      return line["enabled"] == .bool(true) ? .enabled : .disabled
+    }
+    if let fields = line.objectPairs, fields.allSatisfy({ key, value in
+      switch key {
+      case "type", "command": value == .string("")
+      case "enabled": value == .bool(false)
+      default: false
+      }
+    }) { return .disabled }
+    return .unavailable("已配置自定义状态栏")
+  }
 
   // MARK: Status
 
@@ -378,16 +429,17 @@ public struct HookInstaller: Sendable {
   }
 
   /// Backs up the current config (or records that it was missing) before any change.
-  private func writeBackup(_ original: Data, existed: Bool) throws -> URL {
+  private func writeBackup(_ original: Data, existed: Bool, config: URL? = nil) throws -> URL {
     let fm = FileManager.default
     try fm.createDirectory(at: runtime, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let backups = runtime.appendingPathComponent("backups")
     try fm.createDirectory(at: backups, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "")
+    let name = (config ?? configURL).lastPathComponent
     let backup = backups.appendingPathComponent(
-      "\(configURL.lastPathComponent).\(agent.rawValue).\(stamp)-\(UUID().uuidString.prefix(4))"
+      "\(name).\(agent.rawValue).\(stamp)-\(UUID().uuidString.prefix(4))"
         + (existed ? "" : ".missing"))
-    try (existed ? original : Data("\(configURL.lastPathComponent) did not exist\n".utf8))
+    try (existed ? original : Data("\(name) did not exist\n".utf8))
       .write(to: backup, options: [.withoutOverwriting])
     try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
     return backup

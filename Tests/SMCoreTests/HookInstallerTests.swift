@@ -60,6 +60,31 @@ import Testing
     #expect(!FileManager.default.fileExists(atPath: installer.hookBinaryURL.path))
   }
 
+  @Test func agyContextSettingPreservesExistingCLISettings() throws {
+    let box = try Sandbox()
+    let path = ".gemini/antigravity-cli/settings.json"
+    let original = #"{"theme":"dark","statusLine":{"type":"","command":"","enabled":false}}"#
+    try box.write(path, original)
+    let installer = HookInstaller(agent: .agy, home: box.home)
+    #expect(installer.agyContextStatus() == .disabled)
+    let backup = try installer.setAgyContextEnabled(true, bundledHook: box.bundledHook)
+    #expect(try String(contentsOf: backup, encoding: .utf8) == original)
+    #expect(installer.agyContextStatus() == .enabled)
+    let config = try box.read(path)
+    #expect(config["theme"] == .string("dark"))
+    #expect(config["statusLine"]?["command"]?.stringValue?.hasSuffix(" agy-context") == true)
+
+    try installer.setAgyContextEnabled(false, bundledHook: box.bundledHook)
+    #expect(installer.agyContextStatus() == .disabled)
+    #expect(try box.read(path) == .object([("theme", .string("dark"))]))
+
+    let custom = #"{"statusLine":{"type":"command","command":"./custom-status","enabled":true}}"#
+    try box.write(path, custom)
+    #expect(throws: MonitorError.self) { try installer.setAgyContextEnabled(true, bundledHook: box.bundledHook) }
+    #expect(throws: MonitorError.self) { try installer.setAgyContextEnabled(false, bundledHook: box.bundledHook) }
+    #expect(try box.read(path) == OrderedJSON.parse(Data(custom.utf8)))
+  }
+
   @Test func orderedJSONKeepsOrderNumbersAndUnicode() throws {
     let text = #"{"z":1,"a":{"y":2.50,"b":[true,null,"中文\n\"x\""]},"m":-3e2}"#
     let value = try OrderedJSON.parse(Data(text.utf8))
