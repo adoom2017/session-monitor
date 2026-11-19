@@ -25,6 +25,7 @@ import Testing
       states.append(row.state)
       #expect(row.source == .hooks)
       #expect(row.currentSessionId == "agy-sample")
+      #expect(row.transcriptPath == hook.payload["transcriptPath"]?.string)
       #expect(row.terminal.tmuxPane == "%3")
       #expect(!TmuxRemote.canSend(row))
     }

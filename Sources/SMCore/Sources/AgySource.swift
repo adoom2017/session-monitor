@@ -16,6 +16,7 @@ public struct AgySource: AgentSource {
       "session_id": .string(try payload.requiredString("conversationId")),
       "hook_event_name": .string(name),
       "cwd": payload["cwd"] ?? .null,
+      "transcript_path": payload["transcriptPath"] ?? .null,
     ])
     return try HookNormalizer.normalize(mapped, kind: kind, override: { name, _ in
       switch name {
@@ -29,6 +30,19 @@ public struct AgySource: AgentSource {
       default: throw MonitorError.unsupported("agy hook \(singleLine(name, limit: 80))")
       }
     })
+  }
+
+  static func brainDirectory(home: URL) -> URL {
+    home.appendingPathComponent(".gemini/antigravity-cli/brain")
+  }
+
+  static func transcript(in conversation: URL) -> URL {
+    conversation.appendingPathComponent(".system_generated/logs/transcript_full.jsonl")
+  }
+
+  static func transcript(of session: Session, home: URL) -> URL {
+    if let path = session.transcriptPath { return URL(fileURLWithPath: path) }
+    return transcript(in: brainDirectory(home: home).appendingPathComponent(session.currentSessionId))
   }
 
   public func reconcile(store: SessionStore) async throws {

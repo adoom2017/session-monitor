@@ -132,7 +132,7 @@ struct UsagePage: View {
       }
       card("按模型") { ranking(UsageReport.ranking(selected, by: \.model)) }
       card("按项目") { ranking(UsageReport.ranking(selected, by: \.project)) }
-      Text("统计 Mac 上全部 Claude Code、Codex 与 Pi 会话记录，按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出；缓存命中率 = 缓存读 ÷ 全部输入。")
+      Text("统计 Mac 上 Claude Code、Codex、Pi 和 Antigravity CLI 的会话记录，按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出；缓存命中率 = 缓存读 ÷ 全部输入。")
         .font(.caption).foregroundStyle(Theme.textSecondary)
     }
   }
@@ -164,8 +164,8 @@ struct UsagePage: View {
     let parser = DateFormatter()
     parser.dateFormat = "yyyy-MM-dd"
     return days.flatMap { day in
-      ["Claude", "Codex", "Pi"].map {
-        DayPoint(day: day, date: parser.date(from: day) ?? Date(), agent: $0, tokens: totals[day + "|" + $0.lowercased()] ?? 0)
+      [("claude", "Claude"), ("codex", "Codex"), ("pi", "Pi"), ("agy", "Antigravity")].map { id, name in
+        DayPoint(day: day, date: parser.date(from: day) ?? Date(), agent: name, tokens: totals[day + "|" + id] ?? 0)
       }
     }
   }
@@ -188,7 +188,9 @@ struct UsagePage: View {
           .cornerRadius(2)
           .opacity(selectedKey == nil || selectedKey == point.day ? 1 : 0.45)
       }
-      .chartForegroundStyleScale(["Claude": Theme.chartClaude, "Codex": Theme.chartCodex, "Pi": Theme.chartPi])
+      .chartForegroundStyleScale([
+        "Claude": Theme.chartClaude, "Codex": Theme.chartCodex, "Pi": Theme.chartPi, "Antigravity": Theme.green,
+      ])
       .chartLegend(position: .top, alignment: .leading)
       .chartXSelection(value: $selectedDay)
       .chartYAxis {

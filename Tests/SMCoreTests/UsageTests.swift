@@ -128,6 +128,68 @@ import Testing
     #expect(UsageReport.total(reopened.rows().filter { $0.agent == "claude" }).output == 70)
   }
 
+  @Test func agyUsageTracksAppendedTurnsAndCountsOnlyFullTranscripts() async throws {
+    let home = try tempDirectory()
+    defer { try? FileManager.default.removeItem(at: home) }
+    let brain = home.appendingPathComponent(".gemini/antigravity-cli/brain")
+    let a = brain.appendingPathComponent("first/.system_generated/logs")
+    let b = brain.appendingPathComponent("second/.system_generated/logs")
+    try FileManager.default.createDirectory(at: a.appendingPathComponent("chunks"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: b, withIntermediateDirectories: true)
+    let full = a.appendingPathComponent("transcript_full.jsonl")
+    let first = """
+      {"type":"USER_INPUT","step_index":0,"status":"DONE","created_at":"2026-11-16T11:49:00Z"}
+      {"type":"PLANNER_RESPONSE","step_index":1,"status":"DONE","created_at":"2026-11-16T11:49:01Z","model":"gemini-4-hydrogen-medium","input_tokens":3502,"cache_read_tokens":8905,"output_tokens":292}
+
+      """
+    let resumed = """
+      {"type":"PLANNER_RESPONSE","step_index":1,"status":"DONE","created_at":"2026-11-19T08:10:12Z","model":"gemini-4-hydrogen-high","input_tokens":10593,"cache_read_tokens":0,"output_tokens":70}
+
+      """
+    for url in [full, a.appendingPathComponent("transcript.jsonl"), a.appendingPathComponent("chunks/part.jsonl")] {
+      try first.write(to: url, atomically: true, encoding: .utf8)
+    }
+    // Both real conversations have the same transcript file name.
+    try first.write(to: b.appendingPathComponent("transcript_full.jsonl"), atomically: true, encoding: .utf8)
+
+    let hook = HookEnvelope(source: "agy", agentPid: 4242, payload: .object([
+      "hookEventName": .string("SessionStart"), "conversationId": .string("first"),
+      "transcriptPath": .string(full.path),
+    ]))
+    let session = Session(event: try AgySource().normalize(hook))
+    let tracker = UsageTracker(home: home)
+    let initial = TokenUsage(input: 3502, cacheRead: 8905, output: 292)
+    #expect(await tracker.update([session])[session.id]?.total == initial)
+
+    let state = home.appendingPathComponent("state")
+    let ledger = UsageLedger(directory: state, home: home)
+    #expect(try ledger.refresh())
+    let initialRow = try #require(ledger.rows().first)
+    #expect(ledger.rows().count == 1)
+    #expect(initialRow.agent == "agy")
+    #expect(initialRow.model == "gemini-4-hydrogen-medium")
+    #expect(initialRow.usage == initial + initial)
+
+    let handle = try FileHandle(forWritingTo: full)
+    defer { try? handle.close() }
+    _ = try handle.seekToEnd()
+    try handle.write(contentsOf: Data(resumed.utf8))
+    let next = TokenUsage(input: 10593, output: 70)
+    #expect(await tracker.update([session])[session.id] == SessionUsage(
+      total: initial + next, model: "gemini-4-hydrogen-high", contextTokens: nil, contextWindow: nil))
+    #expect(await tracker.update([session])[session.id]?.total == initial + next)
+
+    let reopened = UsageLedger(directory: state, home: home)
+    #expect(try reopened.refresh())
+    #expect(try !reopened.refresh())
+    let rows = reopened.rows()
+    #expect(rows.count == 2)
+    #expect(Set(rows.map(\.agent)) == ["agy"])
+    let date = try #require(ISO8601DateFormatter().date(from: "2026-11-19T08:10:12Z"))
+    #expect(rows.first { $0.day == UsageReport.dayKey(date) && $0.model == "gemini-4-hydrogen-high" }?.usage == next)
+    #expect(UsageReport.total(rows) == initial + initial + next)
+  }
+
   @Test func formatting() {
     #expect(UsageReport.format(950) == "950")
     #expect(UsageReport.format(24_600) == "24.6k")

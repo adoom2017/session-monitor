@@ -84,6 +84,9 @@ enum UsageRange: String, CaseIterable, Identifiable {
 }
 
 struct UsageView: View {
+  private static let chartColors: KeyValuePairs<String, Color> = [
+    "Claude": Theme.chartClaude, "Codex": Theme.chartCodex, "Pi": Theme.chartPi, "Antigravity": Theme.green,
+  ]
   let stats: UsageStats
   let refresh: () -> Void
   @State private var range: UsageRange = .week
@@ -111,7 +114,7 @@ struct UsageView: View {
           section("按模型") { ranking(UsageReport.ranking(selected, by: \.model)) }
           section("按项目") { ranking(UsageReport.ranking(selected, by: \.project)) }
         }
-        Text("统计本机全部 Claude Code、Codex 与 Pi 会话记录（含 \(AppInfo.name) 未运行期间的会话），按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出；缓存命中率 = 缓存读 ÷ 全部输入。")
+        Text("统计本机 Claude Code、Codex、Pi 和 Antigravity CLI 的会话记录（含 \(AppInfo.name) 未运行期间的会话），按消息时间归入当天。总量 = 输入（含缓存读写）+ 输出；缓存命中率 = 缓存读 ÷ 全部输入。")
           .font(.caption).foregroundStyle(Theme.textSecondary)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -140,13 +143,17 @@ struct UsageView: View {
     let claude = UsageReport.total(rows.filter { $0.agent == "claude" }).total
     let codex = UsageReport.total(rows.filter { $0.agent == "codex" }).total
     let pi = UsageReport.total(rows.filter { $0.agent == "pi" }).total
+    let agy = UsageReport.total(rows.filter { $0.agent == "agy" }).total
     return VStack(alignment: .leading, spacing: 6) {
       Text(range.rawValue).font(.caption).foregroundStyle(Theme.textSecondary)
-      Text(UsageReport.format(claude + codex + pi)).font(.system(size: 26, weight: .semibold).monospacedDigit())
+      Text(UsageReport.format(UsageReport.total(rows).total)).font(.system(size: 26, weight: .semibold).monospacedDigit())
       HStack(spacing: 10) {
         legendItem("Claude", Theme.chartClaude, claude)
         legendItem("Codex", Theme.chartCodex, codex)
-        if pi > 0 { legendItem("Pi", Theme.chartPi, pi) }
+      }
+      HStack(spacing: 10) {
+        legendItem("Pi", Theme.chartPi, pi)
+        legendItem("Antigravity", Theme.green, agy)
       }
     }
     .padding(12)
@@ -158,6 +165,7 @@ struct UsageView: View {
     HStack(spacing: 4) {
       RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 8, height: 8)
       Text("\(name) \(UsageReport.format(value))").font(.caption2.monospacedDigit()).foregroundStyle(Theme.textSecondary)
+        .lineLimit(1).minimumScaleFactor(0.8)
     }
   }
 
@@ -178,10 +186,10 @@ struct UsageView: View {
     let parser = DateFormatter()
     parser.dateFormat = "yyyy-MM-dd"
     return days.flatMap { day in
-      ["Claude", "Codex", "Pi"].map { agent in
+      [("claude", "Claude"), ("codex", "Codex"), ("pi", "Pi"), ("agy", "Antigravity")].map { id, name in
         DayPoint(
-          day: day, date: parser.date(from: day) ?? Date(), agent: agent,
-          tokens: totals[day + "|" + agent.lowercased()] ?? 0)
+          day: day, date: parser.date(from: day) ?? Date(), agent: name,
+          tokens: totals[day + "|" + id] ?? 0)
       }
     }
   }
@@ -203,7 +211,7 @@ struct UsageView: View {
           }
       }
     }
-    .chartForegroundStyleScale(["Claude": Theme.chartClaude, "Codex": Theme.chartCodex, "Pi": Theme.chartPi])
+    .chartForegroundStyleScale(Self.chartColors)
     .chartLegend(position: .top, alignment: .leading)
     .chartYAxis {
       AxisMarks(position: .leading) { value in
@@ -238,9 +246,7 @@ struct UsageView: View {
     VStack(alignment: .leading, spacing: 3) {
       Text(day).font(.caption.weight(.semibold))
       ForEach(points) { point in
-        legendItem(
-          point.agent,
-          ["Claude": Theme.chartClaude, "Codex": Theme.chartCodex][point.agent] ?? Theme.chartPi, point.tokens)
+        legendItem(point.agent, Self.chartColors.first { $0.key == point.agent }?.value ?? Theme.textSecondary, point.tokens)
       }
       Text("合计 \(UsageReport.format(points.reduce(0) { $0 + $1.tokens }))").font(.caption2.monospacedDigit())
     }

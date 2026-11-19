@@ -12,7 +12,7 @@ public struct UsageContribution: Sendable, Equatable {
   public var messageId: String?
 }
 
-/// Reads token usage from a Claude transcript or a Codex rollout incrementally: each `read` only
+/// Reads token usage from agent transcripts incrementally: each `read` only
 /// parses complete lines appended since the previous one. Codable so the ledger can resume.
 ///
 /// - Claude: every assistant line carries `message.usage`; one message is written as several
@@ -105,7 +105,9 @@ public struct UsageReader: Codable, Sendable, Equatable {
         || line.contains(Self.piSessionTag) || line.contains(Self.piModelChangeTag)
       else { return }
       consumePi(line, add)
-    case .agy: break
+    case .agy:
+      guard line.contains(Self.agyPlannerTag) else { return }
+      consumeAgy(line, add)
     }
   }
 
@@ -241,6 +243,19 @@ public struct UsageReader: Codable, Sendable, Equatable {
     }
   }
 
+  private mutating func consumeAgy(_ line: Data, _ add: (UsageContribution) -> Void) {
+    guard let object = Self.object(line), object["type"] as? String == "PLANNER_RESPONSE" else { return }
+    // Agy records uncached input separately from cache reads.
+    let usage = TokenUsage(
+      input: Self.int(object["input_tokens"]), cacheRead: Self.int(object["cache_read_tokens"]),
+      output: Self.int(object["output_tokens"]))
+    guard !usage.isZero else { return }
+    let name = object["model"] as? String ?? model ?? "unknown"
+    model = name
+    // Resuming can repeat step indices; each appended planner response is a separate request.
+    add(UsageContribution(at: Self.date(object["created_at"]), model: name, cwd: nil, usage: usage, messageId: nil))
+  }
+
   /// Codex's `input_tokens` includes the cached part.
   static func codexUsage(_ raw: [String: Any]) -> TokenUsage {
     let cached = int(raw["cached_input_tokens"])
@@ -258,6 +273,7 @@ public struct UsageReader: Codable, Sendable, Equatable {
   static let piUsageEntryTag = Data(#""type":"usage""#.utf8)
   static let piSessionTag = Data(#""type":"session""#.utf8)
   static let piModelChangeTag = Data(#""type":"model_change""#.utf8)
+  static let agyPlannerTag = Data(#""PLANNER_RESPONSE""#.utf8)
 
   static func object(_ line: Data) -> [String: Any]? {
     (try? JSONSerialization.jsonObject(with: line)) as? [String: Any]

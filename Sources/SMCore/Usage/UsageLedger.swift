@@ -1,11 +1,10 @@
 import Foundation
 import SMProtocol
 
-/// Token usage of every local Claude and Codex session, by day, agent, model and project,
-/// including sessions SessionMonitor never saw running. Scans `~/.claude/projects` and
-/// `~/.codex/{sessions,archived_sessions}` incrementally (only what was appended since the last
-/// scan) and keeps the result in `<directory>/usage/ledger.json`, so history survives the agents
-/// deleting old transcripts. Thread-safe; `refresh` blocks, call it off the main actor.
+/// Token usage by day, agent, model and project, including sessions SessionMonitor never saw
+/// running. Scans local transcripts incrementally and keeps the result in
+/// `<directory>/usage/ledger.json`, so history survives the agents deleting old transcripts.
+/// Thread-safe; `refresh` blocks, call it off the main actor.
 public final class UsageLedger: @unchecked Sendable {
   struct FileEntry: Codable {
     var reader: UsageReader
@@ -15,7 +14,7 @@ public final class UsageLedger: @unchecked Sendable {
 
   struct Stored: Codable {
     var version = UsageLedger.version
-    /// Keyed by agent and file name, not path: Codex moves rollouts to archived_sessions.
+    /// Keyed by agent and transcript identity: Codex moves files, and Agy reuses file names.
     var files: [String: FileEntry] = [:]
     /// Claude message id → file key that counted it (resumed sessions copy earlier messages).
     var claudeMessages: [String: String] = [:]
@@ -34,6 +33,7 @@ public final class UsageLedger: @unchecked Sendable {
       (.codex, home.appendingPathComponent(".codex/sessions")),
       (.codex, home.appendingPathComponent(".codex/archived_sessions")),
       (.pi, home.appendingPathComponent(".pi/agent/sessions")),
+      (.agy, AgySource.brainDirectory(home: home)),
     ]
     if let data = FileManager.default.contents(atPath: cache.path),
       let decoded = try? JSONDecoder().decode(Stored.self, from: data), decoded.version == Self.version
@@ -47,8 +47,11 @@ public final class UsageLedger: @unchecked Sendable {
     try lock.withLock {
       var changed = false
       for (kind, root) in roots {
-        for url in Self.transcripts(under: root) {
-          changed = try scan(url, kind: kind) || changed
+        let files = kind == .agy
+          ? Self.agyTranscripts(under: root)
+          : Self.transcripts(under: root).map { (id: $0.lastPathComponent, url: $0) }
+        for (id, url) in files {
+          changed = try scan(url, kind: kind, id: id) || changed
         }
       }
       if changed { try save() }
@@ -60,8 +63,8 @@ public final class UsageLedger: @unchecked Sendable {
   public func rows() -> [UsageRow] {
     lock.withLock {
       var totals: [String: TokenUsage] = [:]
-      for (key, entry) in stored.files {
-        let agent = key.hasPrefix("codex/") ? "codex" : (key.hasPrefix("pi/") ? "pi" : "claude")
+      for entry in stored.files.values {
+        let agent = entry.reader.kind.rawValue
         for (bucket, usage) in entry.buckets { totals[agent + "|" + bucket, default: TokenUsage()] += usage }
       }
       return totals.compactMap { key, usage in
@@ -72,8 +75,8 @@ public final class UsageLedger: @unchecked Sendable {
     }
   }
 
-  private func scan(_ url: URL, kind: AgentKind) throws -> Bool {
-    let key = "\(kind.rawValue)/\(url.lastPathComponent)"
+  private func scan(_ url: URL, kind: AgentKind, id: String) throws -> Bool {
+    let key = "\(kind.rawValue)/\(id)"
     let previous = stored.files[key]
     if let previous, let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
       UInt64(size) == previous.reader.offset
@@ -108,6 +111,18 @@ public final class UsageLedger: @unchecked Sendable {
     if previous?.reader.offset != reader.offset { changed = true }
     stored.files[key] = FileEntry(reader: reader, buckets: buckets)
     return changed
+  }
+
+  private static func agyTranscripts(under root: URL) -> [(id: String, url: URL)] {
+    let conversations = (try? FileManager.default.contentsOfDirectory(
+      at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+    // The shorter transcript and the files in chunks/ repeat the full transcript's steps.
+    return conversations.compactMap { conversation in
+      guard (try? conversation.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return nil }
+      let url = AgySource.transcript(in: conversation)
+      guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { return nil }
+      return (conversation.lastPathComponent, url)
+    }
   }
 
   static func transcripts(under root: URL) -> [URL] {
