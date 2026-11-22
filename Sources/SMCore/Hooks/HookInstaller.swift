@@ -30,8 +30,8 @@ public struct HookInstaller: Sendable {
     "SessionStart", "SessionEnd", "SubagentStart", "SubagentStop", "PreToolUse",
     "PermissionRequest", "PostToolUse", "PreCompact", "PostCompact", "UserPromptSubmit", "Stop",
   ]
-  // PreToolUse requires a permission decision. These events only observe the lifecycle.
-  static let agyEvents = ["SessionStart", "PreInvocation", "Stop"]
+  public static let agyEvents = ["SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"]
+  static let agyToolEvents: Set<String> = ["PreToolUse", "PostToolUse"]
   static let agyGroup = "codewhistle"
 
   public let agent: Agent
@@ -186,18 +186,44 @@ public struct HookInstaller: Sendable {
       && hook["command"]?.stringValue?.contains(marker) == true
   }
 
+  private func agyGroupJSON() -> OrderedJSON {
+    let entry: [(String, OrderedJSON)] = [
+      ("type", .string("command")), ("command", .string(command)), ("timeout", .number("5")),
+    ]
+    return .object(Self.agyEvents.map { event in
+      if Self.agyToolEvents.contains(event) {
+        return (event, .array([.object([("matcher", .string("")), ("hooks", .array([.object(entry)]))])]))
+      }
+      return (event, .array([.object(entry)]))
+    })
+  }
+
+  private func isOurAgyHandler(_ handler: OrderedJSON) -> Bool {
+    handler["type"]?.stringValue == "command" && handler["command"]?.stringValue == command
+  }
+
   private func agyHookGroup(in root: OrderedJSON) throws -> OrderedJSON? {
     guard root.objectPairs != nil else { throw MonitorError.invalid("config root must be an object") }
     guard let group = root[Self.agyGroup] else { return nil }
-    guard let pairs = group.objectPairs, Self.agyEvents.allSatisfy({ group[$0] != nil }),
-      pairs.allSatisfy({ key, value in
-        if key == "enabled" { return value == .bool(true) || value == .bool(false) }
-        guard Self.agyEvents.contains(key), let handlers = value.arrayValue, handlers.count == 1 else {
-          return false
-        }
-        return handlers[0]["type"]?.stringValue == "command" && handlers[0]["command"]?.stringValue == command
-      })
-    else { throw MonitorError.invalid("Antigravity hook 组 codewhistle 与已有配置冲突") }
+    guard let pairs = group.objectPairs else {
+      throw MonitorError.invalid("Antigravity hook 组 codewhistle 与已有配置冲突")
+    }
+    var eventCount = 0
+    let valid = pairs.allSatisfy { key, value in
+      if key == "enabled" { return value == .bool(true) || value == .bool(false) }
+      guard let entries = value.arrayValue, entries.count == 1 else { return false }
+      eventCount += 1
+      if Self.agyToolEvents.contains(key) {
+        guard entries[0]["matcher"]?.stringValue == "",
+          let handlers = entries[0]["hooks"]?.arrayValue, handlers.count == 1
+        else { return false }
+        return isOurAgyHandler(handlers[0])
+      }
+      return Self.agyEvents.contains(key) && isOurAgyHandler(entries[0])
+    }
+    guard valid, eventCount > 0 else {
+      throw MonitorError.invalid("Antigravity hook 组 codewhistle 与已有配置冲突")
+    }
     return group
   }
 
@@ -213,12 +239,11 @@ public struct HookInstaller: Sendable {
     }
     return try edit { root, hooks, _ in
       try installBinary(from: bundledHook)
-      var entry: [(String, OrderedJSON)] = [("type", .string("command")), ("command", .string(command))]
       if agent == .agy {
-        entry.append(("timeout", .number("5")))
-        root.set(Self.agyGroup, .object(events.map { ($0, .array([.object(entry)])) }))
+        root.set(Self.agyGroup, agyGroupJSON())
         return
       }
+      var entry: [(String, OrderedJSON)] = [("type", .string("command")), ("command", .string(command))]
       if agent == .claude { entry.append(("timeout", .number("5"))) }
       for event in events {
         var groups = hooks[event]?.arrayValue ?? []
@@ -331,6 +356,17 @@ public struct HookInstaller: Sendable {
     {
       _ = try installExtension()
       replaced = true
+    }
+    if agent == .agy, FileManager.default.fileExists(atPath: configURL.path),
+      let root = try? OrderedJSON.parse(Data(contentsOf: configURL)),
+      let group = try? agyHookGroup(in: root),
+      group["enabled"] != .bool(false)
+    {
+      let expected = agyGroupJSON()
+      if Self.agyEvents.contains(where: { group[$0] != expected[$0] }) {
+        _ = try install(bundledHook: bundledHook)
+        replaced = true
+      }
     }
     return replaced
   }

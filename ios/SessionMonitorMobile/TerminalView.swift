@@ -336,8 +336,8 @@ enum PaneText {
     for line in styled {
       let plain = ANSIRenderer.strip(line)
       let trimmed = plain.trimmingCharacters(in: .whitespaces)
-      let continues = previousFull && !trimmed.isEmpty && plain.hasPrefix(" ")
-        && !trimmed.allSatisfy({ "─━═".contains($0) })
+      let isRule = trimmed.count >= 8 && trimmed.allSatisfy({ "─━═".contains($0) })
+      let continues = previousFull && !trimmed.isEmpty && plain.hasPrefix(" ") && !isRule
       if continues, let last = result.popLast() {
         result.append(last + "\u{1B}[0m" + trimmed)
       } else {
@@ -345,7 +345,8 @@ enum PaneText {
       }
       // Claude Code wraps a few columns short of the edge (its margin, plus a wide character
       // that does not fit leaves the last column empty).
-      previousFull = width(plain.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)) >= columns - 6
+      previousFull = !isRule
+        && width(plain.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)) >= columns - 6
     }
     return result
   }

@@ -63,14 +63,9 @@ public enum TranscriptTailReader {
     for (index, line) in lines.enumerated().reversed() where !line.isEmpty {
       let json: JSONValue
       do { json = try JSONDecoder().decode(JSONValue.self, from: Data(line)) } catch {
-        // A writer may still be appending the final physical line at EOF.
-        guard index == lines.count - 1, data.last != 10,
-          case DecodingError.dataCorrupted(let context) = error,
-          let underlying = context.underlyingError as NSError?,
-          underlying.domain == NSCocoaErrorDomain,
-          underlying.code == CocoaError.propertyListReadCorrupt.rawValue,
-          underlying.userInfo[NSDebugDescriptionErrorKey] as? String == "Unexpected end of file"
-        else { throw error }
+        guard isIncompleteFinalLine(error, index: index, last: lines.count - 1, data: data) else {
+          throw error
+        }
         result.diagnostics.append(Diagnostic(.info, "transcript 最后一行尚未写完，已跳过。"))
         continue
       }
@@ -88,6 +83,18 @@ public enum TranscriptTailReader {
       }
     }
     return result
+  }
+
+  /// A writer may still be appending the final physical line at EOF.
+  static func isIncompleteFinalLine(_ error: Error, index: Int, last: Int, data: Data) -> Bool {
+    guard index == last, data.last != 10,
+      case DecodingError.dataCorrupted(let context) = error,
+      let underlying = context.underlyingError as NSError?,
+      underlying.domain == NSCocoaErrorDomain,
+      underlying.code == CocoaError.propertyListReadCorrupt.rawValue,
+      underlying.userInfo[NSDebugDescriptionErrorKey] as? String == "Unexpected end of file"
+    else { return false }
+    return true
   }
 }
 

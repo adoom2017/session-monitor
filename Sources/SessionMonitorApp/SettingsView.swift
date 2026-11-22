@@ -183,7 +183,7 @@ struct IntegrationSettings: View {
       }
     } message: {
       Text(confirmUninstall == .agy
-        ? "只移除码哨自己的条目。重启 Antigravity CLI 后，只显示检测到的进程。"
+        ? "只移除 \(AppInfo.name) 自己的条目，其他 hook 不受影响。重启 Antigravity CLI 后，只显示检测到的进程。"
         : "只移除 \(AppInfo.name) 自己的条目，其他 hook 不受影响。卸载后该工具的会话只能显示忙/闲。")
     }
   }
@@ -234,14 +234,16 @@ struct IntegrationSettings: View {
       switch status {
       case .installed:
         return ("checkmark.circle.fill", Theme.green,
-          agent == .agy ? "已安装，重启已打开的 Antigravity CLI 会话后生效" : "已安装，会话状态实时更新")
+          agent == .agy ? "已安装，会话状态实时更新；已打开的 Antigravity CLI 会话需重启" : "已安装，会话状态实时更新")
       case .awaitingTrust(let count):
         return (
           "exclamationmark.circle.fill", Theme.orange,
           "已安装，还有 \(count) 项需要在 Codex 中批准：在任意 Codex 会话输入 /hooks 批准；已打开的 Codex 会话需重启"
         )
       case .notInstalled:
-        let available = agent == .agy ? "未安装：仅识别运行中的 CLI" : "未安装：只能显示忙/闲，无法提示授权和等待输入"
+        let available = agent == .agy
+          ? "未安装：仅识别运行中的 CLI，无法实时显示状态和等待输入"
+          : "未安装：只能显示忙/闲，无法提示授权和等待输入"
         return (
           "circle.dashed", .secondary,
           toolPresent ? available : "未检测到 \(name)（~/\(folder) 不存在）"
@@ -338,7 +340,7 @@ struct NotificationSettings: View {
         Text("系统权限")
       }
       Section {
-        SettingsRow(title: "需要授权", detail: "Claude / Codex 请求权限时提醒，有声音") {
+        SettingsRow(title: "需要授权", detail: "Claude / Codex / Antigravity 请求权限时提醒，有声音") {
           Toggle("需要授权", isOn: $notifyPermission).labelsHidden()
         }
         SettingsRow(title: "等待输入", detail: "需要你回答问题或确认计划时提醒，有声音") {
@@ -603,7 +605,7 @@ struct AboutSettings: View {
       Text(AppInfo.name).font(.title.weight(.semibold))
       Text("版本 \(AppInfo.version)").font(.callout).foregroundStyle(.secondary)
         .textSelection(.enabled)
-      Text("集中查看 Claude Code / Codex 会话状态：哪个在工作、哪个已完成、哪个在等你。")
+      Text("集中查看 Claude Code / Codex / Pi / Antigravity 会话状态：哪个在工作、哪个已完成、哪个在等你。")
         .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
         .frame(maxWidth: 380)
     }

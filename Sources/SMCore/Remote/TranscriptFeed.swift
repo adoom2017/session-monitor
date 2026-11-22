@@ -95,15 +95,22 @@ public enum TranscriptParser {
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return formatter
   }()
+  nonisolated(unsafe) static let isoPlain = ISO8601DateFormatter()
+  private static let isoLock = NSLock()
+
+  static func date(_ text: String?) -> Date? {
+    guard let text else { return nil }
+    return isoLock.withLock { iso.date(from: text) ?? isoPlain.date(from: text) }
+  }
 
   public static func entries(_ line: Data, kind: AgentKind, offset: UInt64) -> [TranscriptEntry] {
     guard let json = try? JSONDecoder().decode(JSONValue.self, from: line) else { return [] }
-    let at = json["timestamp"]?.string.flatMap { iso.date(from: $0) }
+    let at = date((json["timestamp"] ?? json["created_at"])?.string)
     switch kind {
     case .claude: return claude(json, at: at, offset: offset)
     case .codex: return codex(json, at: at, offset: offset)
     case .pi: return pi(json, at: at, offset: offset)
-    case .agy: return []
+    case .agy: return agy(json, at: at, offset: offset)
     }
   }
 
@@ -279,6 +286,93 @@ public enum TranscriptParser {
     return []
   }
 
+  /// Agy logs `USER_INPUT`, `PLANNER_RESPONSE`, `GENERIC`, `ERROR_MESSAGE` and `CHECKPOINT` in
+  /// `transcript_full.jsonl`. Entry ids use the byte offset because resumed threads restart
+  /// `step_index` from 0.
+  static func agy(_ json: JSONValue, at: Date?, offset: UInt64) -> [TranscriptEntry] {
+    switch json["type"]?.string {
+    case "USER_INPUT":
+      guard let raw = json["content"]?.string, let text = agyUserText(raw) else { return [] }
+      return [TranscriptEntry(id: "a\(offset)", role: .user, text: text, at: at)]
+    case "PLANNER_RESPONSE":
+      var result: [TranscriptEntry] = []
+      if let thinking = json["thinking"]?.string,
+        !thinking.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      {
+        result.append(TranscriptEntry(id: "a\(offset)-th", role: .thinking, text: thinking, at: at))
+      }
+      if let content = json["content"]?.string {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+          result.append(TranscriptEntry(id: "a\(offset)-txt", role: .assistant, text: trimmed, at: at))
+        }
+      }
+      for (index, call) in (json["tool_calls"]?.array ?? []).enumerated() {
+        let name = call["name"]?.string ?? "tool"
+        let args = call["args"]
+        let summary = toolSummary(args)
+        result.append(
+          TranscriptEntry(
+            id: "a\(offset)-tc-\(index)", role: .tool,
+            text: summary.map { "\(name): \($0)" } ?? name,
+            detail: args.map { clipped(pretty($0)) }, at: at))
+      }
+      return result
+    case "GENERIC":
+      let body = agyGenericBody(json["content"]?.string ?? "")
+      let errorText = json["error"]?.string ?? ""
+      let status = json["status"]?.string
+      let failed = status == "ERROR" || status == "INVALID" || !errorText.isEmpty
+      let output = body.isEmpty ? errorText : body
+      let firstLine = output.split(separator: "\n").lazy
+        .map { singleLine(String($0), limit: 200) }
+        .first { !$0.isEmpty } ?? "（无输出）"
+      return [
+        TranscriptEntry(
+          id: "a\(offset)", role: .toolResult, text: (failed ? "失败：" : "") + firstLine,
+          detail: output.isEmpty ? nil : clipped(output), at: at)
+      ]
+    case "ERROR_MESSAGE":
+      let message = [json["error"]?.string, json["content"]?.string]
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty }
+      guard let message else { return [] }
+      return [
+        TranscriptEntry(
+          id: "a\(offset)", role: .event, text: singleLine(message, limit: 120),
+          detail: clipped(message), at: at)
+      ]
+    case "CHECKPOINT":
+      return [TranscriptEntry(id: "a\(offset)", role: .event, text: "已压缩上下文", at: at)]
+    default:
+      return []
+    }
+  }
+
+  /// Extracts the prompt inside `<USER_REQUEST>…</USER_REQUEST>` without applying `isConversational`
+  /// (user requests can legitimately begin with `<`).
+  static func agyUserText(_ raw: String) -> String? {
+    if let start = raw.range(of: "<USER_REQUEST>"),
+      let end = raw.range(of: "</USER_REQUEST>", range: start.upperBound..<raw.endIndex)
+    {
+      let body = raw[start.upperBound..<end.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+      return body.isEmpty ? nil : body
+    }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    return isConversational(trimmed) ? trimmed : nil
+  }
+
+  static func agyGenericBody(_ raw: String) -> String {
+    var lines = raw.components(separatedBy: "\n")[...]
+    while let first = lines.first,
+      first.hasPrefix("Created At:") || first.hasPrefix("Completed At:")
+    {
+      lines = lines.dropFirst()
+    }
+    let joined = lines.joined(separator: "\n").trimmingCharacters(in: .newlines)
+    return joined.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : joined
+  }
+
   /// Injected context (AGENTS.md, environment, command wrappers) starts with a tag or heading
   /// marker and is not something the user typed.
   static func isConversational(_ text: String) -> Bool {
@@ -288,7 +382,11 @@ public enum TranscriptParser {
 
   static func toolSummary(_ input: JSONValue?) -> String? {
     guard let input else { return nil }
-    for key in ["command", "file_path", "path", "pattern", "url", "description", "prompt", "query"] {
+    for key in [
+      "toolSummary", "command", "CommandLine", "file_path", "path", "Path", "pattern", "url",
+      "description", "Role", "prompt", "Prompt", "query", "title", "brief", "reason", "Action",
+      "action", "text",
+    ] {
       if let value = input[key]?.string, !value.isEmpty { return singleLine(value, limit: 200) }
     }
     return nil

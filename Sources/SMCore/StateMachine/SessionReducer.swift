@@ -73,6 +73,9 @@ public enum SessionReducer {
       if name == "AskUserQuestion" || name == "ExitPlanMode" {
         s.state = .needsInput
         s.attentionMessage = name == "AskUserQuestion" ? "等待回答问题" : "等待确认计划"
+      } else if name == "ask_question" {
+        s.state = .needsInput
+        s.attentionMessage = summary.map { singleLine($0, limit: 80) } ?? "等待回答问题"
       } else {
         s.state = .working
         s.attentionMessage = nil

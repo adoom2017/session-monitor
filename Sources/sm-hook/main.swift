@@ -54,8 +54,8 @@ do {
   }
   let agent = try ProcessIdentity.findAgent(kind: kind, home: home)
   // The global Antigravity config is shared with the desktop product.
+  // Empty stdout + exit 0 is observation-only passthrough on all agy hooks (including PreToolUse).
   if kind == .agy, agent == nil {
-    print("{}")
     exit(EXIT_SUCCESS)
   }
   let environment = ProcessInfo.processInfo.environment
@@ -96,8 +96,6 @@ do {
         Data(("hook diagnostic log failed: \(error.localizedDescription)\n").utf8))
     }
   }
-  // Antigravity's observation hooks expect a JSON result even when no changes are requested.
-  if kind == .agy { print("{}") }
 } catch {
   let message = "sm-hook: \(error.localizedDescription)\n"
   if let home = ProcessInfo.processInfo.environment["HOME"] {

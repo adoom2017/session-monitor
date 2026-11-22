@@ -24,33 +24,29 @@ struct SessionDetailView: View {
       if let session {
         header(session)
         if let usage = session.usage { SessionUsageLine(usage: usage) }
-        if session.agent == "agy" {
-          ContentUnavailableView("无对话记录", systemImage: "bubble.left")
-        } else {
-          if session.remoteInput {
-            Picker("视图", selection: $tab) {
-              ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
-            }
-            .pickerStyle(.segmented).padding(.horizontal, 16).padding(.bottom, 8)
+        if session.remoteInput {
+          Picker("视图", selection: $tab) {
+            ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
           }
-          Group {
-            switch session.remoteInput ? tab : .conversation {
-            case .conversation:
-              ConversationView(
-                sessionID: sessionID, entries: model.transcripts[sessionID],
-                hasOlder: model.hasOlder.contains(sessionID),
-                // Also while it waits for permission or input: the card shows what it is asking.
-                live: [.working, .needsPermission, .needsInput].contains(session.state)
-                  ? pane.flatMap { LiveOutput.extract($0, agent: session.agent) } : nil,
-                loadOlder: { model.loadOlder(sessionID) })
-            case .terminal: TerminalView(pane: pane)
-            }
-          }
-          .frame(maxHeight: .infinity)
-          // Scrolling puts the keyboard away; taps outside are handled by KeyboardDismisser.
-          .scrollDismissesKeyboard(.interactively)
-          bottomBar(session)
+          .pickerStyle(.segmented).padding(.horizontal, 16).padding(.bottom, 8)
         }
+        Group {
+          switch session.remoteInput ? tab : .conversation {
+          case .conversation:
+            ConversationView(
+              sessionID: sessionID, entries: model.transcripts[sessionID],
+              hasOlder: model.hasOlder.contains(sessionID),
+              // Also while it waits for permission or input: the card shows what it is asking.
+              live: [.working, .needsPermission, .needsInput].contains(session.state)
+                ? pane.flatMap { LiveOutput.extract($0, agent: session.agent) } : nil,
+              loadOlder: { model.loadOlder(sessionID) })
+          case .terminal: TerminalView(pane: pane)
+          }
+        }
+        .frame(maxHeight: .infinity)
+        // Scrolling puts the keyboard away; taps outside are handled by KeyboardDismisser.
+        .scrollDismissesKeyboard(.interactively)
+        bottomBar(session)
       } else {
         ContentUnavailableView("会话已结束", systemImage: "xmark.circle", description: Text("Mac 上已不再显示这个会话。"))
       }
@@ -58,7 +54,7 @@ struct SessionDetailView: View {
     .background(Theme.canvas.ignoresSafeArea())
     .navigationTitle(session?.name ?? "会话")
     .navigationBarTitleDisplayMode(.inline)
-    .onAppear { if session?.agent != "agy" { model.open(sessionID) } }
+    .onAppear { model.open(sessionID) }
     .onDisappear { model.close(sessionID) }
     .confirmationDialog("会话正在工作", isPresented: $confirmBusySend, titleVisibility: .visible) {
       Button("仍然发送") { submit() }

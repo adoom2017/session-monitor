@@ -28,7 +28,7 @@ import Testing
     }
   }
 
-  @Test func agyInstallUsesFlatObservationHooksAndPreservesOtherGroups() throws {
+  @Test func agyInstallUsesFlatAndGroupedHooksAndPreservesOtherGroups() throws {
     let box = try Sandbox()
     let path = ".gemini/config/hooks.json"
     let original = #"{"lint":{"PostToolUse":[{"matcher":"run_command","hooks":[{"command":"./lint.sh"}]}]}}"#
@@ -39,8 +39,16 @@ import Testing
     #expect(installer.status() == .installed)
     let config = try box.read(path)
     let group = try #require(config["codewhistle"])
-    #expect(group.objectPairs?.map(\.0) == ["SessionStart", "PreInvocation", "Stop"])
+    #expect(group.objectPairs?.map(\.0) == ["SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"])
     #expect(group["PreInvocation"]?.arrayValue?.first?["command"]?.stringValue == installer.command)
+    #expect(group["PreToolUse"]?.arrayValue?.first?["matcher"] == .string(""))
+    #expect(
+      group["PreToolUse"]?.arrayValue?.first?["hooks"]?.arrayValue?.first?["command"]?.stringValue
+        == installer.command)
+    #expect(group["PostToolUse"]?.arrayValue?.first?["matcher"] == .string(""))
+    #expect(
+      group["PostToolUse"]?.arrayValue?.first?["hooks"]?.arrayValue?.first?["command"]?.stringValue
+        == installer.command)
     try installer.install(bundledHook: box.bundledHook)
     #expect(try box.read(path) == config)
     try installer.uninstall()
@@ -48,16 +56,54 @@ import Testing
     #expect(try box.read(path) == OrderedJSON.parse(Data(original.utf8)))
   }
 
+  @Test func agyUpgradesLegacyThreeEventInstallCleanly() throws {
+    let box = try Sandbox()
+    let path = ".gemini/config/hooks.json"
+    let installer = HookInstaller(agent: .agy, home: box.home)
+    let cmd = installer.command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    let legacy = """
+      {"lint":{"Stop":[{"type":"command","command":"./other.sh"}]},"codewhistle":{"SessionStart":[{"type":"command","command":"\(cmd)","timeout":5}],"PreInvocation":[{"type":"command","command":"\(cmd)","timeout":5}],"Stop":[{"type":"command","command":"\(cmd)","timeout":5}]}}
+      """
+    try box.write(path, legacy)
+    // Existing installs already have the binary on disk.
+    try FileManager.default.createDirectory(
+      at: installer.hookBinaryURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.copyItem(at: box.bundledHook, to: installer.hookBinaryURL)
+
+    #expect(installer.status() == .installed)
+    #expect(try installer.syncBinary(from: box.bundledHook) == true)
+    let upgraded = try box.read(path)
+    #expect(upgraded["lint"]?["Stop"]?.arrayValue?.first?["command"] == .string("./other.sh"))
+    #expect(
+      upgraded["codewhistle"]?.objectPairs?.map(\.0)
+        == ["SessionStart", "PreInvocation", "PreToolUse", "PostToolUse", "Stop"])
+    #expect(try installer.syncBinary(from: box.bundledHook) == false)
+
+    // Uninstalling directly from a legacy 3-event install also succeeds.
+    try box.write(path, legacy)
+    #expect(installer.status() == .installed)
+    try installer.uninstall()
+    #expect(installer.status() == .notInstalled)
+    #expect(try box.read(path)["codewhistle"] == nil)
+    #expect(try box.read(path)["lint"] != nil)
+  }
+
   @Test func agyInstallDoesNotOverwriteConflictingGroup() throws {
     let box = try Sandbox()
     let path = ".gemini/config/hooks.json"
-    let original = #"{"codewhistle":{"Stop":[{"command":"./other.sh"}]}}"#
-    try box.write(path, original)
     let installer = HookInstaller(agent: .agy, home: box.home)
-    #expect(throws: MonitorError.self) { try installer.install(bundledHook: box.bundledHook) }
-    #expect(throws: MonitorError.self) { try installer.uninstall() }
-    #expect(try box.read(path) == OrderedJSON.parse(Data(original.utf8)))
-    #expect(!FileManager.default.fileExists(atPath: installer.hookBinaryURL.path))
+    for conflicting in [
+      #"{"codewhistle":{"Stop":[{"command":"./other.sh"}]}}"#,
+      #"{"codewhistle":{}}"#,
+      #"{"codewhistle":{"PreToolUse":[{"matcher":"run_command","hooks":[{"type":"command","command":"./other.sh"}]}]}}"#,
+    ] {
+      try box.write(path, conflicting)
+      if case .unreadable = installer.status() {} else { Issue.record("expected unreadable for \(conflicting)") }
+      #expect(throws: MonitorError.self) { try installer.install(bundledHook: box.bundledHook) }
+      #expect(throws: MonitorError.self) { try installer.uninstall() }
+      #expect(try box.read(path) == OrderedJSON.parse(Data(conflicting.utf8)))
+      #expect(!FileManager.default.fileExists(atPath: installer.hookBinaryURL.path))
+    }
   }
 
   @Test func agyContextSettingPreservesExistingCLISettings() throws {

@@ -12,7 +12,7 @@ public struct RemoteRejection: Error, LocalizedError, Sendable, Equatable {
 /// with a tmux pane qualify; every action first proves the pane still hosts that session.
 public enum TmuxRemote {
   public static func canSend(_ session: Session) -> Bool {
-    session.kind != .agy && session.terminal.tmuxPane != nil && session.pid != nil && session.state != .ended
+    session.terminal.tmuxPane != nil && session.pid != nil && session.state != .ended
   }
 
   struct Target: Sendable {
@@ -24,7 +24,6 @@ public enum TmuxRemote {
   /// Resolves the pane and checks its shell is an ancestor of the session's process, so a pane
   /// reused by another program never receives the input.
   static func target(for session: Session) async throws -> Target {
-    guard session.kind != .agy else { throw RemoteRejection("Antigravity 会话仅支持状态监控") }
     guard let pane = session.terminal.tmuxPane, let pid = session.pid else {
       throw RemoteRejection("该会话不在 tmux 中，只能查看")
     }
@@ -125,11 +124,8 @@ public enum TmuxRemote {
     _ = try await Jumper.runTmux(target.executable, target.base + ["set-buffer", "-b", buffer, "--", text])
     _ = try await Jumper.runTmux(
       target.executable, target.base + ["paste-buffer", "-p", "-d", "-b", buffer, "-t", target.pane])
-    let probe = inputProbe(text)
     func pending() async throws -> Bool {
-      guard let probe else { return false }
-      return try await capture(target).components(separatedBy: "\n").suffix(10)
-        .contains { $0.contains(probe) }
+      Self.hasPendingInput(in: try await capture(target), text: text)
     }
     for _ in 0..<10 where try await !pending() { try await Task.sleep(for: .milliseconds(100)) }
     try await Task.sleep(for: .milliseconds(250))
@@ -140,6 +136,16 @@ public enum TmuxRemote {
         try await Task.sleep(for: .milliseconds(250))
       }
       guard attempt == 0, try await pending() else { return }
+    }
+  }
+
+  /// Checks whether the pasted text (or a collapsed `[Pasted text #...]` placeholder, which agy
+  /// creates at >= 16 lines or > 1000 chars) is still sitting in the bottom input area.
+  static func hasPendingInput(in screen: String, text: String) -> Bool {
+    let probe = inputProbe(text)
+    return screen.components(separatedBy: "\n").suffix(10).contains { line in
+      if let probe, line.contains(probe) { return true }
+      return line.contains("[Pasted text #")
     }
   }
 
@@ -160,7 +166,7 @@ public enum TmuxRemote {
 }
 
 /// Finds the numbered choice list the agent is waiting on (permission prompt, question, update
-/// notice). A list counts only with a selection marker on one option (`❯` Claude, `›` Codex) and
+/// notice). A list counts only with a selection marker on one option (`❯` Claude, `›` Codex, `>` Agy) and
 /// near the bottom of the screen, so numbered lists in replies are not mistaken for menus.
 public enum PaneMenuParser {
   static let option = try! NSRegularExpression(pattern: #"^\s*(?:([❯›>])\s*)?(\d{1,2})\.\s+(\S.*?)\s*$"#)

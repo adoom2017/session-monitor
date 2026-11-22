@@ -100,7 +100,11 @@ import SMProtocol
                 try await source.reconcile(store: store)
               }.value
               for current in store.sessions {
-                if before[current.id] == nil { enrich(current, delay: .zero, notify: false) }
+                if before[current.id] == nil
+                  || before[current.id]?.currentSessionId != current.currentSessionId
+                {
+                  enrich(current, delay: .zero, notify: false)
+                }
                 if let previous = before[current.id], previous.state != current.state {
                   stateChanged?(previous, current)
                   if current.state == .done {

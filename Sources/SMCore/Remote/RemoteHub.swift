@@ -301,7 +301,7 @@ import SMProtocol
     case .claude: located = try? ClaudeSource.transcript(of: session)
     case .codex: located = session.transcriptPath.map { URL(fileURLWithPath: $0) }
     case .pi: located = try? PiSource.transcript(of: session)
-    case .agy: located = nil
+    case .agy: located = AgySource.transcript(of: session)
     }
     // A new session's hooks name the transcript before its first prompt creates the file.
     guard let url = located, FileManager.default.fileExists(atPath: url.path) else {

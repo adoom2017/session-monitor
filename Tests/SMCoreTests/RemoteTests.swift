@@ -92,6 +92,84 @@ import Testing
         enter continue · esc skip
       """
     #expect(PaneMenuParser.parse(update).count == 3)
+
+    // Captured in R0 (agy 1.5.14): permission prompt and ask_question both use `> 1.`.
+    let agyPermission = """
+      Command
+      ────────────────────────────────────────────────────────────────────────────────────────────────────
+      Requesting permission for:
+         echo PERM_STRICT_OK
+      Run this command?
+      > 1. Yes, run command
+        2. No, cancel
+        ↑/↓ Navigate · tab Amend · ctrl+g edit/expand command
+      esc to cancel                                            auto · Orchestrator · Gemini 4 Neon · xhigh
+      """
+    let agyPermOptions = PaneMenuParser.parse(agyPermission)
+    #expect(agyPermOptions.map(\.number) == [1, 2])
+    #expect(agyPermOptions.map(\.label) == ["Yes, run command", "No, cancel"])
+    #expect(agyPermOptions[0].selected && !agyPermOptions[1].selected)
+
+    let agyQuestion = """
+      ? Tea or Coffee?
+      Question
+      ────────────────────────────────────────────────────────────────────────────────────────────────────
+      Question 1/1: Tea or Coffee?
+      > 1. Tea
+        2. Coffee
+        3. Write-in...
+        ↑/↓ Navigate · enter Select · esc Skip
+      esc to cancel                                            auto · Orchestrator · Gemini 4 Neon · xhigh
+      """
+    let agyQOptions = PaneMenuParser.parse(agyQuestion)
+    #expect(agyQOptions.map(\.number) == [1, 2, 3])
+    #expect(agyQOptions.map(\.label) == ["Tea", "Coffee", "Write-in..."])
+    #expect(agyQOptions[0].selected)
+
+    let agyModelUnnumbered = """
+      Select Model
+      Search:
+      > Gemini 4 Neon
+        Gemini 4 Hydrogen
+        ↑/↓ Navigate · enter Select · esc Cancel
+      """
+    #expect(PaneMenuParser.parse(agyModelUnnumbered).isEmpty)
+  }
+
+  @Test func collapsedPasteCountsAsPendingInput() {
+    let longLines = (1...16).map { "line_\($0)" }.joined(separator: "\n")
+    let collapsedLinesScreen = """
+      ────────────────────────────────────────
+      > [Pasted text #1 +16 lines]
+      ────────────────────────────────────────
+      ? for shortcuts
+      """
+    #expect(TmuxRemote.hasPendingInput(in: collapsedLinesScreen, text: longLines))
+
+    let longSingleLine = String(repeating: "a", count: 1200)
+    let collapsedCharsScreen = """
+      ────────────────────────────────────────
+      > [Pasted text #1 1200 chars]
+      ────────────────────────────────────────
+      ? for shortcuts
+      """
+    #expect(TmuxRemote.hasPendingInput(in: collapsedCharsScreen, text: longSingleLine))
+
+    let verbatimScreen = """
+      ────────────────────────────────────────
+      > hello world
+      ────────────────────────────────────────
+      ? for shortcuts
+      """
+    #expect(TmuxRemote.hasPendingInput(in: verbatimScreen, text: "hello world"))
+
+    let submittedScreen = """
+      ────────────────────────────────────────
+      >
+      ────────────────────────────────────────
+      esc to cancel
+      """
+    #expect(!TmuxRemote.hasPendingInput(in: submittedScreen, text: longLines))
   }
 
   @Test func numberedListsInRepliesAreNotMenus() {
@@ -365,6 +443,72 @@ extension RemoteTests {
         return
       }
       if case .error(let text) = message { Issue.record("error: \(text)"); return }
+    }
+  }
+
+  @MainActor @Test func agyTranscriptSyncsInitiallyAndIncrementally() async throws {
+    let dir = try tempDirectory()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let transcript = dir.appendingPathComponent("transcript_full.jsonl")
+    let store = SessionStore()
+    try store.apply(
+      AgentEvent(
+        kind: .agy, sessionId: "agy-conv-1", agentPid: 4242, cwd: "/work/demo",
+        transcriptPath: transcript.path, at: Date(), type: .sessionStart(reason: nil),
+        terminal: TerminalInfo(tmuxPane: "%3", tty: "/dev/ttys001")))
+    let hub = try RemoteHub(store: store, directory: dir) { _ in }
+    try await hub.start(serverName: "Test Mac", port: 0, advertise: false)
+    defer { hub.stop() }
+    for _ in 0..<50 where hub.status.port == nil { try await Task.sleep(for: .milliseconds(100)) }
+    let port = try #require(hub.status.port)
+    let payload = try #require(hub.pairingPayload())
+    let (connection, _) = try await RemoteConnection.connect(
+      hosts: ["127.0.0.1"], port: port, fingerprint: payload.fingerprint,
+      hello: Hello(deviceName: "Test", token: nil, pairingCode: payload.code))
+    defer { connection.close() }
+    var messages = connection.messages.makeAsyncIterator()
+    guard case .snapshot(let sessions)? = try await messages.next(), let session = sessions.first else {
+      Issue.record("no snapshot"); return
+    }
+    #expect(session.agent == "agy" && session.remoteInput)
+
+    try await connection.send(.subscribeTranscript(sessionId: session.id))
+    guard case .transcript(_, let empty, true, _)? = try await messages.next() else {
+      Issue.record("no empty transcript"); return
+    }
+    #expect(empty.isEmpty)
+
+    let firstTurn = [
+      #"{"step_index":0,"source":"USER_EXPLICIT","type":"USER_INPUT","status":"DONE","created_at":"2026-11-22T02:49:55Z","content":"<USER_REQUEST>\n同步 agy 对话\n</USER_REQUEST>"}"#,
+      #"{"step_index":1,"source":"MODEL","type":"PLANNER_RESPONSE","status":"DONE","created_at":"2026-11-22T02:49:56Z","model":"gemini-4-neon-xhigh","content":"收到"}"#,
+      "",
+    ].joined(separator: "\n")
+    try firstTurn.write(to: transcript, atomically: true, encoding: .utf8)
+
+    while let message = try await messages.next() {
+      if case .error(let text) = message { Issue.record("error: \(text)"); return }
+      if case .transcript(_, let entries, true, _) = message, !entries.isEmpty {
+        #expect(entries.map(\.role) == [.user, .assistant])
+        #expect(entries.map(\.text) == ["同步 agy 对话", "收到"])
+        break
+      }
+    }
+
+    let handle = try FileHandle(forWritingTo: transcript)
+    try handle.seekToEnd()
+    try handle.write(
+      contentsOf: Data(
+        (#"{"step_index":2,"source":"MODEL","type":"GENERIC","status":"DONE","created_at":"2026-11-22T02:49:57Z","content":"Created At: 2026-11-22T10:49:57+08:00\nCompleted At: 2026-11-22T10:49:57+08:00\nOK"}"#
+          + "\n").utf8))
+    try handle.close()
+
+    while let message = try await messages.next() {
+      if case .error(let text) = message { Issue.record("error: \(text)"); return }
+      if case .transcript(_, let entries, false, _) = message, !entries.isEmpty {
+        #expect(entries.map(\.role) == [.toolResult])
+        #expect(entries.map(\.text) == ["OK"])
+        return
+      }
     }
   }
 }

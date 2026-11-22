@@ -248,13 +248,36 @@ import Observation
   }
 
   public func upsertScannedAgy(pid: Int32, cwd: String?, terminal: TerminalInfo, now: Date) {
-    let event = AgentEvent(
-      kind: .agy, sessionId: "\(Self.pendingSessionPrefix)\(pid)", agentPid: pid, cwd: cwd,
-      at: now, type: .sessionStart(reason: nil), terminal: terminal)
-    guard byID[event.key] == nil else { return }
-    var row = Session(event: event)
-    row.source = .processScan
-    byID[event.key] = row
+    let id = Session.key(kind: .agy, pid: pid, sessionId: "")
+    func create(terminal: TerminalInfo) -> Session {
+      var row = Session(
+        event: AgentEvent(
+          kind: .agy, sessionId: "\(Self.pendingSessionPrefix)\(pid)", agentPid: pid, cwd: cwd,
+          at: now, type: .sessionStart(reason: nil), terminal: terminal))
+      row.source = .processScan
+      row.state = .idle
+      byID[id] = row
+      return row
+    }
+    guard var s = byID[id] else {
+      let created = create(terminal: terminal)
+      recordDiagnostic("发现运行中的 Antigravity CLI 会话 \(pid)（\(created.projectName)），等待其 hook 事件。")
+      return
+    }
+    if s.state == .ended {
+      var merged = s.terminal
+      merged.merge(terminal)
+      _ = create(terminal: merged)
+      recordDiagnostic("Antigravity CLI 会话 \(pid)（\(s.projectName)）结束了上一个对话但仍在运行，等待新对话的 hook 事件。")
+      return
+    }
+    if s.terminal.tty == nil { s.terminal.tty = terminal.tty }
+    if s.terminal.tmuxPane == nil, let pane = terminal.tmuxPane { s.terminal.tmuxPane = pane }
+    if s.cwd == nil, let cwd {
+      s.cwd = cwd
+      s.projectName = Session.projectName(cwd: cwd)
+    }
+    byID[id] = s
   }
 
   func adoptScannedAgyConversation(pid: Int32, conversationID: String) {
@@ -264,16 +287,40 @@ import Observation
     byID[id] = row
   }
 
-  /// A turn ended without a hook (Codex Esc interrupt) or its Stop was missed; the rollout says so.
+  /// A tool permission prompt appeared without a hook (Agy has no PermissionRequest hook).
+  public func applyExternalPermission(id: String, message: String, at: Date) {
+    guard let s = byID[id], s.state == .working else { return }
+    let event = AgentEvent(
+      kind: s.kind, sessionId: s.currentSessionId, agentPid: s.pid, at: at,
+      type: .permissionRequested(tool: nil, message: message))
+    do {
+      byID[id] = try SessionReducer.reduce(s, event)
+      recordDiagnostic("会话 \(id) 的终端正在等待权限确认，已按窗格内容更新状态。")
+    } catch { report(error, context: "按窗格更新权限状态失败") }
+  }
+
+  /// The user approved a permission prompt (Agy fires no hook until PostToolUse completes).
+  public func applyExternalPermissionApproved(id: String, at: Date) {
+    guard var s = byID[id], s.state == .needsPermission else { return }
+    s.state = .working
+    s.stateSince = at
+    s.lastEventAt = max(s.lastEventAt, at)
+    s.attentionMessage = nil
+    byID[id] = s
+    recordDiagnostic("会话 \(id) 的权限提示已消失且仍在运行，已按终端窗格恢复为工作中。")
+  }
+
+  /// A turn ended without a hook (Codex/Agy Esc interrupt or permission deny) or its Stop was missed.
   public func applyExternalTurnEnd(id: String, aborted: Bool, at: Date) {
     guard let s = byID[id] else { return }
     let event = AgentEvent(
       kind: s.kind, sessionId: s.currentSessionId, agentPid: s.pid, at: at,
       type: aborted ? .interrupted : .stop)
+    let source = s.kind == .agy ? "终端窗格" : "rollout"
     do {
       byID[id] = try SessionReducer.reduce(s, event)
-      recordDiagnostic("会话 \(id) 的回合已\(aborted ? "被中断" : "结束")但没有 hook 事件，已按 rollout 修正。")
-    } catch { report(error, context: "按 rollout 修正会话状态失败") }
+      recordDiagnostic("会话 \(id) 的回合已\(aborted ? "被中断" : "结束")但没有 hook 事件，已按 \(source) 修正。")
+    } catch { report(error, context: "按 \(source) 修正会话状态失败") }
   }
 
   /// How long hooks must be quiet before the Claude session file may correct the state.

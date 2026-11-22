@@ -134,7 +134,7 @@ extension Session {
     if source == .processScan {
       switch kind {
       case .pi: notes.append("从运行中的 Pi 进程发现，尚未收到它的扩展事件；下一次活动后实时更新。")
-      case .agy: notes.append("已发现 Antigravity CLI 进程，尚未收到会话事件。")
+      case .agy: notes.append("从运行中的 Antigravity CLI 进程发现，尚未收到它的 hook 事件；下一次活动后实时更新。")
       default: notes.append("从运行中的 Codex 进程发现，尚未收到它的 hook 事件；忙/闲来自 Codex 会话记录。")
       }
     }
