@@ -30,6 +30,7 @@ struct SettingsActions {
   let openDataDirectory: () -> Void
   let report: (any Error, String) -> Void
   let remote: RemoteAccess
+  let quotaWidget: AgyQuotaWidgetPreferences
 }
 
 /// One settings tab, shown in the window's toolbar (see AppDelegate.makeSettingsWindow).
@@ -60,7 +61,7 @@ enum SettingsTab: String, CaseIterable {
     case .integration: AnyView(IntegrationSettings(actions: actions))
     case .notifications: AnyView(NotificationSettings(actions: actions))
     case .phone: AnyView(PhoneSettings(remote: actions.remote))
-    case .general: AnyView(GeneralSettings(actions: actions))
+    case .general: AnyView(GeneralSettings(actions: actions, quotaWidget: actions.quotaWidget))
     case .about: AnyView(AboutSettings())
     }
   }
@@ -273,7 +274,7 @@ struct IntegrationSettings: View {
   private var agyContextRow: some View {
     let detail: String
     switch agyContext {
-    case .enabled: detail = "已启用"
+    case .enabled: detail = "已启用（同步上下文占用与剩余额度）"
     case .disabled: detail = hookStatus[.agy] == .installed ? "未启用" : "需要先安装 Antigravity CLI 的 hook"
     case .unavailable(let reason): detail = reason
     }
@@ -401,11 +402,25 @@ struct NotificationSettings: View {
 
 struct GeneralSettings: View {
   let actions: SettingsActions
+  @Bindable var quotaWidget: AgyQuotaWidgetPreferences
   @AppStorage(AppDelegate.detachedActionKey) private var detachedAction = ""
   @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
   var body: some View {
     Form {
+      Section {
+        SettingsRow(title: "Antigravity 额度小组件", detail: "独立显示剩余用量与重置倒计时") {
+          Toggle("Antigravity 额度小组件", isOn: $quotaWidget.visible).labelsHidden()
+        }
+        SettingsRow(title: "小组件层级", detail: "选择始终置顶或贴在桌面背景上") {
+          Picker("小组件层级", selection: $quotaWidget.pinnedToDesktop) {
+            Text("置顶悬浮").tag(false)
+            Text("贴在桌面").tag(true)
+          }.labelsHidden()
+        }
+      } header: {
+        Text("小组件")
+      }
       Section {
         SettingsRow(title: "会话未在任何窗口打开时", detail: "点击的 tmux session 没有标签页在显示它") {
           Picker("会话未在任何窗口打开时", selection: $detachedAction) {

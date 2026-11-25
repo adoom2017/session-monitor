@@ -515,4 +515,93 @@ import Testing
     row = try #require(inputStore.sessions.first)
     #expect(row.state == .idle && row.attentionMessage == nil && !row.unread)
   }
+
+  @Test func agyQuotaParsesRealPayloadAndFormatsResetTimes() throws {
+    let now = Date(timeIntervalSince1970: 1_795_576_200)  // 2026-11-25T03:10:00Z
+    let payload = #"""
+    {
+      "plan_tier": "Pro",
+      "quota": {
+        "3p-5h": { "remaining_fraction": 1, "reset_time": "1970-01-01T00:00:00Z", "reset_in_seconds": 0 },
+        "3p-weekly": { "remaining_fraction": 1.2, "reset_time": "1970-01-01T00:00:00Z", "reset_in_seconds": 0 },
+        "gemini-5h": { "remaining_fraction": 0.9058288, "reset_time": "2026-11-25T06:02:15Z", "reset_in_seconds": 10118 },
+        "gemini-weekly": { "remaining_fraction": 0.68006825, "reset_time": "2026-12-01T01:20:17Z", "reset_in_seconds": 511600 },
+        "hidden-bucket": { "remaining_fraction": 0.5, "disabled": true },
+        "credits": { "remaining_amount": 42, "reset_in_seconds": 90 }
+      }
+    }
+    """#
+    let snapshot = try #require(try AgyQuota.parse(Data(payload.utf8), now: now))
+    #expect(snapshot.planTier == "Pro")
+    #expect(snapshot.buckets.map(\.id) == ["gemini-5h", "gemini-weekly", "3p-5h", "3p-weekly", "credits", "hidden-bucket"])
+    #expect(snapshot.activeBuckets.count == 5)
+
+    let g5h = snapshot.buckets[0]
+    #expect(g5h.remainingPercent == 91)
+    #expect(g5h.valueText == "91%")
+    #expect(g5h.resetAt != nil)
+    #expect(g5h.compactResetText(now: now) == "2h52m")
+
+    let gWeekly = snapshot.buckets[1]
+    #expect(gWeekly.remainingPercent == 68)
+    #expect(gWeekly.compactResetText(now: now) == "5d22h")
+
+    let p35h = snapshot.buckets[2]
+    #expect(p35h.resetAt == nil)
+    #expect(p35h.resetText(now: now) == "未消耗")
+    #expect(p35h.compactResetText(now: now).isEmpty)
+
+    let p3Weekly = snapshot.buckets[3]
+    #expect(p3Weekly.remainingFraction == 1.0)
+
+    let credits = snapshot.buckets[4]
+    #expect(credits.valueText == "42")
+    #expect(credits.resetAt == now.addingTimeInterval(90))
+    #expect(credits.compactResetText(now: now) == "1m")
+
+    let utc = TimeZone(secondsFromGMT: 0)!
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = utc
+    #expect(g5h.resetText(now: now, calendar: cal, timeZone: utc) == "2h 52m · 06:02")
+    #expect(gWeekly.resetText(now: now, calendar: cal, timeZone: utc) == "5d 22h · 12/01 01:20")
+    #expect(credits.resetText(now: now, calendar: cal, timeZone: utc) == "1m · 03:11")
+    #expect(g5h.resetText(now: now.addingTimeInterval(15_000), calendar: cal, timeZone: utc) == "已重置")
+    #expect(AgyQuotaBucket(id: "x", remainingFraction: 0.5, resetAt: now.addingTimeInterval(30)).resetText(now: now) == "<1m")
+  }
+
+  @Test func agyQuotaRecordRoundTripAndDeduplication() throws {
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let t0 = Date(timeIntervalSince1970: 1_795_576_200)
+    let payload = #"{"plan_tier":"Pro","quota":{"gemini-5h":{"remaining_fraction":0.8,"reset_time":"2026-11-25T06:00:00Z"}}}"#
+    try AgyQuota.record(Data(payload.utf8), home: home, now: t0)
+    let loaded = try #require(AgyQuota.load(home: home))
+    #expect(loaded.planTier == "Pro")
+    #expect(loaded.buckets.first?.remainingPercent == 80)
+
+    // Within 30s with identical buckets: deduped (updatedAt stays t0).
+    try AgyQuota.record(Data(payload.utf8), home: home, now: t0.addingTimeInterval(10))
+    #expect(AgyQuota.load(home: home)?.updatedAt == t0)
+
+    // After 30s: updated.
+    let t2 = t0.addingTimeInterval(35)
+    try AgyQuota.record(Data(payload.utf8), home: home, now: t2)
+    #expect(AgyQuota.load(home: home)?.updatedAt == t2)
+  }
+
+  @Test func agyDiscoveryExcludesQuotaProbeAndFindsLocalExecutable() throws {
+    #expect(
+      AgyDiscovery.classify(
+        pid: 99, tty: "/dev/ttys010",
+        arguments: ["agy", "--settings", "/tmp/agy-quota-probe-123/agy-quota-probe-settings.json"],
+        cwd: "/tmp", startTime: nil) == nil)
+
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let bin = home.appendingPathComponent(".local/bin/agy")
+    try FileManager.default.createDirectory(at: bin.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("#!/bin/sh\n".utf8).write(to: bin)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: bin.path)
+    #expect(AgyQuotaProbe.findExecutable(home: home, environment: [:]) == bin.path)
+  }
 }

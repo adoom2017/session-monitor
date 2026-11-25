@@ -2,6 +2,12 @@ import Foundation
 import SMCore
 import SMProtocol
 
+@MainActor @Observable final class AgyQuotaState {
+  var snapshot: AgyQuotaSnapshot?
+  var refreshing = false
+  var lastError: String?
+}
+
 @MainActor final class AppRuntime {
   let store: SessionStore
   let directory: URL
@@ -16,15 +22,24 @@ import SMProtocol
   private let tracker = UsageTracker()
   let ledger: UsageLedger
   let usage = UsageStats()
+  let agyQuota = AgyQuotaState()
+  private var agyQuotaMtime: Date?
+  private var quotaProbeTask: Task<Void, Never>?
   private var usageTasks: [Task<Void, Never>] = []
+  var isQuotaWidgetVisible: (() -> Bool)?
   var stateChanged: ((Session?, Session) -> Void)?
   var notifyDone: ((Session) -> Void)?
+
+  private var home: URL { directory.deletingLastPathComponent() }
 
   init(store: SessionStore, directory: URL) {
     self.store = store
     self.directory = directory
     sources = ["claude": ClaudeSource(), "codex": CodexSource(), "pi": PiSource(), "agy": AgySource()]
     ledger = UsageLedger(directory: directory)
+    let home = directory.deletingLastPathComponent()
+    agyQuota.snapshot = AgyQuota.load(home: home)
+    agyQuotaMtime = AgyQuota.modificationDate(home: home)
   }
 
   /// Session rows' usage every few seconds; the all-sessions ledger every minute (the first scan
@@ -39,6 +54,7 @@ import SMProtocol
           for session in sessions {
             store.applyUsage(values[session.id], id: session.id, sessionID: session.currentSessionId)
           }
+          reloadAgyQuotaFromDisk()
           try? await Task.sleep(for: .seconds(3))
         }
       })
@@ -51,6 +67,49 @@ import SMProtocol
           try? await Task.sleep(for: .seconds(60))
         }
       })
+    quotaProbeTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(2))
+      while !Task.isCancelled {
+        guard let self else { return }
+        if isQuotaWidgetVisible?() == true {
+          let now = Date()
+          let needsRefresh =
+            agyQuota.snapshot.map {
+              now.timeIntervalSince($0.updatedAt) >= 300 || $0.hasExpiredBucket(at: now)
+            } ?? true
+          if needsRefresh {
+            await refreshAgyQuota(userInitiated: false)
+          }
+        }
+        try? await Task.sleep(for: .seconds(600))
+      }
+    }
+  }
+
+  private func reloadAgyQuotaFromDisk() {
+    let mtime = AgyQuota.modificationDate(home: home)
+    guard mtime != agyQuotaMtime else { return }
+    agyQuotaMtime = mtime
+    if let snapshot = AgyQuota.load(home: home) {
+      agyQuota.snapshot = snapshot
+      agyQuota.lastError = nil
+    }
+  }
+
+  func refreshAgyQuota(userInitiated: Bool) async {
+    guard !agyQuota.refreshing else { return }
+    agyQuota.refreshing = true
+    if userInitiated { agyQuota.lastError = nil }
+    defer { agyQuota.refreshing = false }
+    do {
+      let snapshot = try await AgyQuotaProbe.fetch(home: home)
+      agyQuota.snapshot = snapshot
+      agyQuotaMtime = AgyQuota.modificationDate(home: home)
+      agyQuota.lastError = nil
+    } catch {
+      agyQuota.lastError = error.localizedDescription
+      await diagnose(.warning, "Antigravity 额度刷新失败：\(error.localizedDescription)")
+    }
   }
 
   func refreshLedger() async {
@@ -247,5 +306,6 @@ import SMProtocol
     server?.stop()
     for task in completionDeadline.values { task.cancel() }
     for task in usageTasks { task.cancel() }
+    quotaProbeTask?.cancel()
   }
 }

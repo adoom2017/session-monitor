@@ -22,6 +22,7 @@ do {
     if let agent = try ProcessIdentity.findAgent(kind: .agy, home: home) {
       try AgyContext.record(input, home: home, pid: agent.pid)
     }
+    try AgyQuota.record(input, home: home)
     exit(EXIT_SUCCESS)
   }
   guard let kind = AgentKind(rawValue: command) else {

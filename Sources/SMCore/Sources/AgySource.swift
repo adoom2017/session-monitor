@@ -271,6 +271,7 @@ public enum AgyDiscovery {
     pid: Int32, tty: String, arguments: [String], cwd: String?, startTime: Date?
   ) -> AgyProcess? {
     let args = Array(arguments.dropFirst())
+    if args.contains(where: { $0.contains(AgyQuotaProbe.probeMarker) }) { return nil }
     for arg in args {
       let flag = arg.split(separator: "=", maxSplits: 1).first.map(String.init) ?? arg
       if nonSessionFlags.contains(flag) { return nil }

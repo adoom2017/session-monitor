@@ -10,6 +10,7 @@ import SwiftUI
   private var runtime: AppRuntime!
   private var remote: RemoteAccess!
   private var panel: PanelController!
+  private var quotaWidget: AgyQuotaWidgetController!
   private var status: NSStatusItem!
   private var notifications: NotificationManager!
   private var settingsWindow: NSWindow?
@@ -30,6 +31,10 @@ import SwiftUI
       store: store, jump: { [weak self] in self?.jump($0) },
       copy: { [weak self] in self?.copy($0) }, showLog: { [weak self] in self?.showLog() },
       openSettings: { [weak self] in self?.showSettings() })
+    quotaWidget = AgyQuotaWidgetController(state: runtime.agyQuota) { [weak self] in
+      Task { await self?.runtime.refreshAgyQuota(userInitiated: true) }
+    }
+    runtime.isQuotaWidgetVisible = { [weak self] in self?.quotaWidget.preferences.visible ?? false }
     status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     notifications = NotificationManager()
     notifications.jump = { [weak self] id in
@@ -50,6 +55,7 @@ import SwiftUI
     observeStore()
     do { try registerHotKey() } catch { report(error, "全局快捷键注册失败") }
     panel.show()
+    quotaWidget.syncVisibility()
     syncInstalledHook()
     showSettingsOnFirstLaunch()
     if let directory = ProcessInfo.processInfo.environment["SM_SNAPSHOT_DIR"] {
@@ -59,6 +65,7 @@ import SwiftUI
       Task { @MainActor [weak self] in
         try? await Task.sleep(for: .seconds(4))  // first reconcile has populated sessions
         self?.panel.writeSnapshots(to: URL(fileURLWithPath: directory))
+        self?.quotaWidget.writeSnapshots(to: URL(fileURLWithPath: directory))
         self?.writeSettingsSnapshot(to: URL(fileURLWithPath: directory))
         await self?.writeUsageSnapshot(to: URL(fileURLWithPath: directory))
       }
@@ -84,6 +91,8 @@ import SwiftUI
     withObservationTracking {
       _ = store.sessions
       _ = store.lastError
+      _ = runtime.agyQuota.snapshot
+      _ = quotaWidget.preferences.visible
       rebuildMenu()
     } onChange: { [weak self] in
       Task { @MainActor in self?.observeStore() }
@@ -124,6 +133,20 @@ import SwiftUI
       menu.addItem(item)
     }
     menu.addItem(.separator())
+    if let snapshot = runtime.agyQuota.snapshot, !snapshot.activeBuckets.isEmpty {
+      let preferred = ["gemini-5h", "gemini-weekly"].compactMap { id in
+        snapshot.activeBuckets.first { $0.id == id }
+      }
+      let shown = preferred.isEmpty ? Array(snapshot.activeBuckets.prefix(2)) : preferred
+      let summary = shown.map { "\($0.shortName) \($0.valueText)" }.joined(separator: " · ")
+      let quotaItem = NSMenuItem(title: "Antigravity 额度 · \(summary)", action: nil, keyEquivalent: "")
+      quotaItem.isEnabled = false
+      menu.addItem(quotaItem)
+    }
+    let widgetItem = add(menu, "显示 Antigravity 额度小组件", #selector(toggleQuotaWidget))
+    widgetItem.state = quotaWidget.preferences.visible ? .on : .off
+    add(menu, "刷新 Antigravity 额度", #selector(refreshAgyQuota))
+    menu.addItem(.separator())
     add(menu, "显示/隐藏悬浮窗", #selector(togglePanel), key: "s", modifiers: [.option, .command])
     add(menu, "全部标为已读", #selector(markRead))
     let login = add(menu, "开机启动", #selector(toggleLogin))
@@ -148,6 +171,16 @@ import SwiftUI
     return item
   }
   @objc private func togglePanel() { panel.toggle() }
+  @objc private func toggleQuotaWidget() {
+    quotaWidget.toggle()
+    if quotaWidget.preferences.visible {
+      let stale = runtime.agyQuota.snapshot.map { Date().timeIntervalSince($0.updatedAt) >= 300 } ?? true
+      if stale { Task { await runtime.refreshAgyQuota(userInitiated: false) } }
+    }
+  }
+  @objc private func refreshAgyQuota() {
+    Task { await runtime.refreshAgyQuota(userInitiated: true) }
+  }
   @objc private func markRead() { store.markAllRead() }
   @objc private func quit() { NSApp.terminate(nil) }
   @objc private func menuJump(_ sender: NSMenuItem) {
@@ -199,7 +232,8 @@ import SwiftUI
         }
       },
       report: { [weak self] error, context in self?.report(error, context) },
-      remote: remote)
+      remote: remote,
+      quotaWidget: quotaWidget.preferences)
   }
 
   @objc private func showSettings() {
