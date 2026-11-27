@@ -54,9 +54,10 @@ public struct CodexSource: AgentSource {
       })
   }
 
-  /// A codex process was found but has no tty: the desktop app's shared app-server. When no codex
-  /// ancestor was found at all (e.g. `webrun` tool hooks run from the browser extension host), the
-  /// origin is unknown: such events carry no terminal facts and attach to their row by session id.
+  /// A codex process was found but has no tty: either the desktop app or Codex CLI's shared
+  /// `--managed-daemon` (`codex app-server`), which runs hooks for all TUI sessions. When no
+  /// codex ancestor was found at all (e.g. `webrun` tool hooks run from the browser extension
+  /// host), the origin is unknown: such events carry no terminal facts and attach by session id.
   static func isDesktopHosted(_ e: HookEnvelope) -> Bool {
     e.agentPid != nil && e.env["TTY"].flatMap({ $0 }) == nil
   }
@@ -179,13 +180,15 @@ public enum CodexRolloutIndex {
     root: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
       ".codex/sessions")
   ) -> Match? {
-    let since = [process.startTime, after].compactMap { $0 }.max()
-    let files = recentRollouts(root: root, since: since)
-    if let id = process.resumeID {
+    if after == nil, let id = process.resumeID {
+      // A resumed conversation's rollout was modified before the new TUI process started.
+      let files = recentRollouts(root: root, since: nil)
       return files.first { $0.lastPathComponent.contains(id) }.map {
         Match(sessionID: id, path: $0.path)
       }
     }
+    let since = [process.startTime, after].compactMap { $0 }.max()
+    let files = recentRollouts(root: root, since: since)
     guard let cwd = process.cwd else { return nil }
     for file in files {
       guard let meta = sessionMeta(file), meta.cwd == cwd else { continue }

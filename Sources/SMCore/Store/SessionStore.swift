@@ -21,18 +21,41 @@ import Observation
   public func resolveIdentity(_ original: AgentEvent) throws -> AgentEvent {
     var event = original
     if event.agentPid == nil {
-      let matches = byID.values.filter {
+      var matches = byID.values.filter {
         $0.kind == event.kind && $0.currentSessionId == event.sessionId && $0.pid != nil
+      }
+      if event.kind == .codex {
+        let liveMatches = matches.filter { $0.state != .ended }
+        if !liveMatches.isEmpty {
+          for ended in matches where ended.state == .ended {
+            byID.removeValue(forKey: ended.id)
+          }
+          matches = liveMatches
+        } else if case .sessionEnd = event.type {
+          // Allow duplicate SessionEnd on an already-ended row.
+        } else if !matches.isEmpty, pendingTUI(for: event) != nil {
+          for ended in matches where ended.state == .ended {
+            byID.removeValue(forKey: ended.id)
+          }
+          matches = []
+        }
       }
       guard matches.count <= 1 else {
         throw MonitorError.invalid("ambiguous session_id for missing agentPid")
       }
+      let matchedBySessionID = !matches.isEmpty
       if let known = matches.first ?? pendingTUI(for: event) {
         event.agentPid = known.pid
         // The hook ran outside that session's process (daemon, browser host…): its terminal facts
         // describe some other process and must not overwrite the row's (it broke jumps before).
         event.terminal = TerminalInfo()
-        recordDiagnostic("hook 缺少 PID，已通过 sessionId 或工作目录关联到既有会话 \(known.id)。")
+        if event.kind == .codex {
+          if !matchedBySessionID {
+            recordDiagnostic("Codex 会话 \(known.id) 已关联对话 \(event.sessionId)。")
+          }
+        } else {
+          recordDiagnostic("hook 缺少 PID，已通过 sessionId 或工作目录关联到既有会话 \(known.id)。")
+        }
       }
     } else if byID[event.key] == nil {
       let sidKey = Session.key(kind: event.kind, pid: nil, sessionId: event.sessionId)
@@ -154,6 +177,14 @@ import Observation
     running: Bool?, now: Date
   ) {
     let id = Session.key(kind: .codex, pid: process.pid, sessionId: "")
+    if let sessionID {
+      for other in byID.values
+      where other.id != id && other.kind == .codex && other.state == .ended
+        && other.currentSessionId == sessionID
+      {
+        byID.removeValue(forKey: other.id)
+      }
+    }
     @discardableResult
     func create(sessionID: String?, rolloutPath: String?, terminal: TerminalInfo) -> Session {
       var created = Session(

@@ -384,4 +384,83 @@ import Testing
     #expect(row.state == .working)  // the guardian's Stop does not end the main turn
     #expect(row.terminal.tty == "/dev/ttys006")
   }
+
+  @Test @MainActor func daemonHooksDoNotFloodMissingPIDDiagnostics() throws {
+    let store = SessionStore()
+    let base = Date()
+    let process = CodexProcess(pid: getpid(), tty: "/dev/ttys031", cwd: "/work/iknow", startTime: base)
+    store.upsertScannedCodex(process, sessionID: nil, rolloutPath: nil, tmuxPane: "%4", running: nil, now: base)
+    _ = store.drainDiagnostics()
+
+    func daemonHook(_ name: String, offset: Double, tool: String? = nil) throws -> HookEnvelope {
+      let toolPart = tool.map { #","tool_name":"\#($0)","tool_input":{"command":"echo hi"}"# } ?? ""
+      let payload = try JSONDecoder().decode(
+        JSONValue.self,
+        from: Data(#"{"session_id":"01a1-daemon","hook_event_name":"\#(name)","cwd":"/work/iknow"\#(toolPart)}"#.utf8))
+      return HookEnvelope(
+        source: "codex", receivedAt: (base.timeIntervalSince1970 + offset) * 1000,
+        agentPid: 44598, env: ["TTY": nil], payload: payload)
+    }
+
+    try store.apply(CodexSource().normalize(daemonHook("SessionStart", offset: 1)))
+    try store.apply(CodexSource().normalize(daemonHook("UserPromptSubmit", offset: 2)))
+    for i in 0..<5 {
+      try store.apply(CodexSource().normalize(daemonHook("PreToolUse", offset: 3 + Double(i * 2), tool: "Bash")))
+      try store.apply(CodexSource().normalize(daemonHook("PostToolUse", offset: 4 + Double(i * 2), tool: "Bash")))
+    }
+    try store.apply(CodexSource().normalize(daemonHook("Stop", offset: 20)))
+
+    let diagnostics = store.drainDiagnostics()
+    #expect(diagnostics.count == 1)
+    #expect(diagnostics.first?.message.contains("已关联对话") == true)
+    #expect(!diagnostics.contains { $0.message.contains("hook 缺少 PID") })
+    let row = try #require(store.sessions.first)
+    #expect(store.sessions.count == 1 && row.id == "codex:\(getpid())")
+    #expect(row.state == .done && row.unread)
+  }
+
+  @Test @MainActor func resumingExitedSessionWithinThirtySecondsDoesNotCollide() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+      "sm-codex-resume-\(UUID().uuidString.prefix(8))")
+    let day = root.appendingPathComponent("2026/11/24")
+    try FileManager.default.createDirectory(at: day, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+
+    let sid = "01a1ed85-3ac0-7131"
+    let rollout = day.appendingPathComponent("rollout-2026-11-24T10-00-00-\(sid).jsonl")
+    let meta = #"{"type":"session_meta","payload":{"id":"\#(sid)","cwd":"/work/ModelRelay"}}"#
+    try Data((meta + "\n").utf8).write(to: rollout)
+    let rolloutDate = Date(timeIntervalSinceNow: -600)
+    try FileManager.default.setAttributes([.modificationDate: rolloutDate], ofItemAtPath: rollout.path)
+
+    // Rollout index must find the resumed conversation even though the new TUI started later.
+    let newProcess = CodexProcess(
+      pid: 27234, tty: "/dev/ttys001", cwd: "/work/ModelRelay", startTime: Date(), resumeID: sid)
+    let found = CodexRolloutIndex.find(for: newProcess, root: root)
+    #expect(found?.sessionID == sid)
+
+    // Case 1: old TUI (36071) ended within 30s, new TUI (27234) adopts sid via resume scan, then daemon hook arrives.
+    let store1 = SessionStore()
+    let t0 = Date()
+    try store1.apply(AgentEvent(kind: .codex, sessionId: sid, agentPid: 36071, cwd: "/work/ModelRelay", at: t0, type: .sessionEnd(reason: "exit")))
+    store1.upsertScannedCodex(newProcess, sessionID: found?.sessionID, rolloutPath: found?.path, tmuxPane: "%1", running: nil, now: t0.addingTimeInterval(2))
+    #expect(store1.sessions.map(\.id) == ["codex:27234"])
+    let payload = try JSONDecoder().decode(
+      JSONValue.self,
+      from: Data(#"{"session_id":"\#(sid)","hook_event_name":"UserPromptSubmit","cwd":"/work/ModelRelay"}"#.utf8))
+    let daemonEvent = try CodexSource().normalize(
+      HookEnvelope(source: "codex", receivedAt: t0.addingTimeInterval(3).timeIntervalSince1970 * 1000, agentPid: 44598, env: ["TTY": nil], payload: payload))
+    let row1 = try store1.apply(daemonEvent)
+    #expect(row1.id == "codex:27234" && row1.state == .working)
+    #expect(store1.lastError == nil)
+
+    // Case 2: daemon hook arrives while old TUI (36071) is .ended and new TUI (27234) is still pending-27234.
+    let store2 = SessionStore()
+    try store2.apply(AgentEvent(kind: .codex, sessionId: sid, agentPid: 36071, cwd: "/work/ModelRelay", at: t0, type: .sessionEnd(reason: "exit")))
+    store2.upsertScannedCodex(newProcess, sessionID: nil, rolloutPath: nil, tmuxPane: "%1", running: nil, now: t0.addingTimeInterval(2))
+    let row2 = try store2.apply(daemonEvent)
+    #expect(row2.id == "codex:27234" && row2.state == .working)
+    #expect(store2.sessions.count == 1)
+    #expect(store2.lastError == nil)
+  }
 }
